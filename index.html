@@ -2923,6 +2923,7 @@ document.addEventListener("click",e=>{
     /* users */
     case "add-user": formUser(); break;
     case "add-user-cloud": formUserCloud(); break;
+    case "create-tenant": doCreateTenant(); break;
     case "curso-nova-aba": try{ window.open("curso.html","_blank"); }catch(e){} break;
     case "edit-user": formUser(byId(db.usuarios,id)); break;
     case "del-user": confirmDel("Excluir este funcionário?",()=>{db.usuarios=db.usuarios.filter(x=>x.id!==id);}); break;
@@ -3137,33 +3138,35 @@ const CLOUD = {
   setStatus(s){ this.status=s; const el=document.getElementById("sync-ind"); if(el){ const t=document.createElement("div"); t.innerHTML=syncIndicatorHTML(); if(t.firstElementChild) el.replaceWith(t.firstElementChild); } }
 };
 const SB = {
-  on:false, client:null, uid:null, email:"", canWrite:true,
+  on:false, client:null, uid:null, email:"", canWrite:true, tenantId:null,
   cols:["config","usuarios","fornecedores","insumos","produtos","compras","movimentacoes","producoes","perdas","contagens","cotacoes","vendas","despesas","comandas"],
   hashes:{}, pushTimer:null, status:"idle",
   configured(){ return typeof SUPA_URL==="string" && SUPA_URL && typeof SUPA_KEY==="string" && SUPA_KEY && typeof supabase!=="undefined" && supabase.createClient; },
   async init(){ if(!this.configured()) return false; try{ this.client=supabase.createClient(SUPA_URL,SUPA_KEY); this.on=true; return true; }catch(e){ return false; } },
   async session(){ try{ const {data}=await this.client.auth.getSession(); return data.session||null; }catch(e){ return null; } },
+  async fetchTenant(){ try{ const {data,error}=await this.client.from("memberships").select("tenant_id").eq("user_id",this.uid).maybeSingle(); this.tenantId=(!error&&data)?data.tenant_id:null; }catch(e){ this.tenantId=null; } return this.tenantId; },
   async loadAll(){
     const results={}; let any=false;
-    try{ const {data,error}=await this.client.from("app_state").select("k,data"); if(!error&&data){ data.forEach(r=>{ results[r.k]=r.data; any=true; }); } }catch(e){}
+    try{ const {data,error}=await this.client.from("app_state").select("k,data").eq("tenant_id",this.tenantId); if(!error&&data){ data.forEach(r=>{ results[r.k]=r.data; any=true; }); } }catch(e){}
     if(!any){ db=emptyDb(); ensureSchema(); await this.pushAll(); }
     else { db=emptyDb(); this.cols.forEach(c=>CLOUD.unpack(c,results[c])); ensureSchema(); }
     this.cols.forEach(c=>{ this.hashes[c]=CLOUD.hash(CLOUD.pack(c)); });
   },
-  async pushAll(){ for(const c of this.cols){ try{ await this.client.from("app_state").upsert({k:c,data:CLOUD.pack(c),updated_at:new Date().toISOString()}); this.hashes[c]=CLOUD.hash(CLOUD.pack(c)); }catch(e){} } },
+  async pushAll(){ for(const c of this.cols){ try{ await this.client.from("app_state").upsert({tenant_id:this.tenantId,k:c,data:CLOUD.pack(c),updated_at:new Date().toISOString()},{onConflict:"tenant_id,k"}); this.hashes[c]=CLOUD.hash(CLOUD.pack(c)); }catch(e){} } },
   push(){
     if(!this.on) return;
     clearTimeout(this.pushTimer); this.setStatus("syncing");
     this.pushTimer=setTimeout(async ()=>{
       let err=false;
-      for(const c of this.cols){ const h=CLOUD.hash(CLOUD.pack(c)); if(h!==this.hashes[c]){ try{ const {error}=await this.client.from("app_state").upsert({k:c,data:CLOUD.pack(c),updated_at:new Date().toISOString()}); if(error){err=true;} else {this.hashes[c]=h;} }catch(e){err=true;} } }
+      for(const c of this.cols){ const h=CLOUD.hash(CLOUD.pack(c)); if(h!==this.hashes[c]){ try{ const {error}=await this.client.from("app_state").upsert({tenant_id:this.tenantId,k:c,data:CLOUD.pack(c),updated_at:new Date().toISOString()},{onConflict:"tenant_id,k"}); if(error){err=true;} else {this.hashes[c]=h;} }catch(e){err=true;} } }
       this.setStatus(err?((typeof navigator!=="undefined"&&navigator.onLine===false)?"offline":"error"):"synced");
     },450);
   },
   subscribeAll(){
     try{
-      this.client.channel("app_state_ch").on("postgres_changes",{event:"*",schema:"public",table:"app_state"},payload=>{
+      this.client.channel("app_state_"+(this.tenantId||"x")).on("postgres_changes",{event:"*",schema:"public",table:"app_state",filter:"tenant_id=eq."+this.tenantId},payload=>{
         const row=payload.new||payload.old; if(!row||!row.k) return;
+        if(row.tenant_id && row.tenant_id!==this.tenantId) return;
         const c=row.k; if(this.cols.indexOf(c)<0) return;
         const data=payload.new?payload.new.data:null; if(!data) return;
         const h=CLOUD.hash(c==="config"?{config:data.config||{}}:{rows:Array.isArray(data.rows)?data.rows:[]});
@@ -3178,6 +3181,48 @@ const SB = {
 async function sbBootData(){
   $("#root").innerHTML=`<div style="height:100vh;display:grid;place-items:center;color:var(--ink-3);font-family:'Bricolage Grotesque',sans-serif">☁︎ Carregando dados…</div>`;
   await SB.loadAll(); SB.subscribeAll(); SB.setStatus("synced");
+}
+/* Resolve o restaurante do usuário; se não tiver, oferece criar (self-service). */
+async function sbProceed(session){
+  SB.uid=session.user.id; SB.email=session.user.email||"";
+  $("#root").innerHTML=`<div style="height:100vh;display:grid;place-items:center;color:var(--ink-3);font-family:'Bricolage Grotesque',sans-serif">☁︎ Carregando…</div>`;
+  await SB.fetchTenant();
+  if(!SB.tenantId){ state.pendingSession=session; renderCreateTenant(); return; }
+  await sbBootData();
+  await sbEnter(session);
+}
+function renderCreateTenant(err){
+  $("#root").innerHTML = `
+  <div class="login-wrap">
+    <div class="login-hero">
+      <div class="brandmark"><img class="loginlogo" src="${LOGO_FULL}" alt="Kitchen Sync"></div>
+      <div><h1>Crie o seu restaurante.</h1>
+        <p>Dê um nome ao seu estabelecimento para começar. Você será o administrador e poderá convidar a sua equipe depois.</p></div>
+      <div class="disc">Seus dados ficam isolados dos demais restaurantes.</div>
+      <div class="pie"></div>
+    </div>
+    <div class="login-panel"><div class="login-card">
+      <h2>Novo restaurante</h2>
+      <div class="sub">É rápido — depois é só começar a usar.</div>
+      <div id="tnErr">${err?`<div class="login-err">${esc(err)}</div>`:""}</div>
+      <div class="field"><label>Nome do restaurante</label><input class="input" id="tn-nome" placeholder="Ex.: Pizzaria do João" autocomplete="off"></div>
+      <button class="btn primary" id="tn-btn" data-act="create-tenant" style="width:100%;justify-content:center;margin-top:6px">Criar restaurante</button>
+      <div class="login-hint">Entrou na conta errada? <a data-act="logout" style="cursor:pointer;color:var(--brand);font-weight:600">Sair</a></div>
+    </div></div>
+  </div>`;
+  const i=$("#tn-nome"); if(i) i.addEventListener("keydown",e=>{ if(e.key==="Enter") doCreateTenant(); });
+}
+async function doCreateTenant(){
+  const nome=($("#tn-nome").value||"").trim(); const btn=$("#tn-btn"); const errBox=$("#tnErr");
+  if(!nome){ if(errBox) errBox.innerHTML='<div class="login-err">Informe o nome do restaurante.</div>'; return; }
+  if(btn){ btn.disabled=true; btn.textContent="Criando…"; }
+  try{
+    const {data,error}=await SB.client.functions.invoke("create-tenant",{body:{nome}});
+    if(error||!(data&&data.tenant_id)){ throw (error||new Error("falha")); }
+    SB.tenantId=data.tenant_id;
+    await sbBootData();
+    await sbEnter(state.pendingSession);
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent="Criar restaurante"; } if(errBox) errBox.innerHTML='<div class="login-err">Não foi possível criar agora. Verifique a conexão e tente novamente.</div>'; }
 }
 async function sbEnter(session){
   SB.uid=session.user.id; SB.email=session.user.email||"";
@@ -3206,7 +3251,7 @@ function renderAuth(err){
     </div>
     <div class="login-panel"><div class="login-card">
       <h2>${signup?"Criar conta":"Entrar"}</h2>
-      <div class="sub">${signup?"O primeiro cadastro vira administrador.":"Acesse com seu e-mail e senha."}</div>
+      <div class="sub">${signup?"Crie sua conta e, no próximo passo, o seu restaurante.":"Acesse com seu e-mail e senha."}</div>
       <div id="loginErr">${err?`<div class="login-err">${esc(err)}</div>`:""}</div>
       <div class="field"><label>E-mail</label><input class="input" id="lg-email" type="email" placeholder="voce@empresa.com" autocomplete="username"></div>
       <div class="field"><label>Senha</label><input class="input" id="lg-senha" type="password" placeholder="••••••" autocomplete="${signup?"new-password":"current-password"}"></div>
@@ -3227,11 +3272,11 @@ async function doSbAuth(){
       if(error) throw error;
       const {data,error:e2}=await SB.client.auth.signInWithPassword({email,password:senha});
       if(e2){ state.authMode="login"; renderAuth("Conta criada! Se o projeto exigir confirmação de e-mail, confirme e entre."); return; }
-      await sbBootData(); await sbEnter(data.session); return;
+      await sbProceed(data.session); return;
     }
     const {data,error}=await SB.client.auth.signInWithPassword({email,password:senha});
     if(error) throw error;
-    await sbBootData(); await sbEnter(data.session); return;
+    await sbProceed(data.session); return;
   }catch(err){
     renderAuth((err&&err.message)?err.message:"Falha na autenticação.");
   }
@@ -3296,7 +3341,7 @@ function renderConfigError(msg){
     try{
       const sess=await SB.session();
       if(!sess){ renderAuth(); }
-      else { await sbBootData(); await sbEnter(sess); }
+      else { await sbProceed(sess); }
       try{ SB.client.auth.onAuthStateChange((ev,s2)=>{ if(ev==="SIGNED_OUT"){ state.user=null; renderAuth(); } }); }catch(e){}
     }catch(e){ renderConfigError("Não foi possível conectar ao Supabase. Verifique as chaves (SUPA_URL / anon key), se o SQL foi executado e sua internet."); }
   } else if(mode==="cloud"){
