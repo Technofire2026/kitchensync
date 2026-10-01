@@ -373,12 +373,14 @@ const NAV = [
  {id:"fechamento-bar",g:"Suprimentos",label:"Fechamento Bar/Setor", ic:"🧾", roles:["admin","gerencia","operacao","estoque"]},
  {id:"despesas",   g:"Financeiro", label:"Despesas",          ic:"💸", roles:["admin","gerencia","financeiro"]},
  {id:"dre",        g:"Financeiro", label:"DRE",               ic:"📈", roles:["admin","gerencia","financeiro"]},
- {id:"analises",   g:"Financeiro", label:"Análises",          ic:"🔎", roles:["admin","gerencia","financeiro","compras","operacao"]},
+ {id:"analises",   g:"Financeiro", label:"Análises",          ic:"🔎", roles:["admin","gerencia","financeiro","compras"]},
  {id:"kpis",       g:"Financeiro", label:"Margens & KPIs",    ic:"👑", roles:["admin","gerencia","financeiro"]},
  {id:"funcionarios",g:"Sistema",  label:"Funcionários",       ic:"👥", roles:["admin","gerencia"]},
  {id:"config",     g:"Sistema",   label:"Configurações",      ic:"⚙️", roles:["admin"]},
 ];
 const can = view => { const n=NAV.find(x=>x.id===view); return n && state.user && n.roles.includes(state.user.nivel); };
+/* Quem pode ver faturamento, lucro e custos (financeiro). Demais funções operam sem ver valores de venda/lucro. */
+const verFin = () => !!(state.user && ["admin","gerencia","financeiro"].includes(state.user.nivel));
 
 /* ---------- Persistence ---------- */
 let db = null;
@@ -878,6 +880,7 @@ function vDashboard(){
   const baixo = db.insumos.filter(i=>num(i.estoque)<=num(i.minimo));
   const valorEstoque = db.insumos.reduce((s,i)=>s+num(i.estoque)*num(i.custoMedio),0);
   const valorVencidoMes = (db.perdas||[]).filter(p=>p.motivo==="Vencido"&&inMonth(p.data,monthISO())).reduce((s,p)=>s+perdaValor(p),0);
+  const vencidosMes = (db.perdas||[]).filter(p=>p.motivo==="Vencido"&&inMonth(p.data,monthISO())).length;
   const vencProx = db.insumos.reduce((s,i)=>s+lotesDe(i).filter(l=>{const dd=diasAte(l.validade);return dd!==null&&dd<=num((db.config&&db.config.validadeAlerta)||7);}).length,0);
 
   // top produtos
@@ -904,11 +907,18 @@ function vDashboard(){
   </div>
 
   <div class="grid kpis" style="margin-bottom:16px">
+    ${verFin()?`
     <div class="kpi"><div class="k-lab">🧾 Vendas ${label}</div><div class="k-val">${BRL(receita)}</div><div class="k-sub">${vendasP.length} pedido(s) · ${NUM(nItens)} itens</div></div>
     <div class="kpi good"><div class="k-lab">💰 Lucro bruto</div><div class="k-val">${BRL(lucroBruto)}</div><div class="k-sub">CMV: ${BRL(cmv)} (${receita>0?NUM(cmv/receita*100):0}%)</div></div>
     <div class="kpi"><div class="k-lab">🛒 Compras ${label}</div><div class="k-val">${BRL(comprasP)}</div><div class="k-sub">Insumos adquiridos</div></div>
     <div class="kpi ${baixo.length?"bad":""}"><div class="k-lab">📦 Estoque baixo</div><div class="k-val">${baixo.length}</div><div class="k-sub">Valor em estoque: ${BRL(valorEstoque)}</div></div>
     <div class="kpi ${valorVencidoMes>0?"bad":""}"><div class="k-lab">⚠️ Vencido no mês</div><div class="k-val">${BRL(valorVencidoMes)}</div><div class="k-sub">${vencProx} item(ns) vencendo em breve</div></div>
+    `:`
+    <div class="kpi"><div class="k-lab">🧾 Pedidos ${label}</div><div class="k-val">${vendasP.length}</div><div class="k-sub">${NUM(nItens)} itens vendidos</div></div>
+    <div class="kpi ${baixo.length?"bad":""}"><div class="k-lab">📦 Estoque baixo</div><div class="k-val">${baixo.length}</div><div class="k-sub">item(ns) abaixo do mínimo</div></div>
+    <div class="kpi ${vencProx>0?"bad":""}"><div class="k-lab">⏳ Vencendo em breve</div><div class="k-val">${vencProx}</div><div class="k-sub">próximos ${(db.config&&db.config.validadeAlerta)||7} dias</div></div>
+    <div class="kpi ${vencidosMes>0?"bad":""}"><div class="k-lab">⚠️ Vencidos no mês</div><div class="k-val">${vencidosMes}</div><div class="k-sub">itens com baixa por validade</div></div>
+    `}
   </div>
 
   <div class="two-col">
@@ -1831,16 +1841,16 @@ function vProdutos(){
   return `
   ${toolbar("Buscar produto…", editable?`<button class="btn primary" data-act="add-produto">＋ Novo produto</button>`:"")}
   <div class="card"><div class="card-body flush"><div class="tbl-wrap">
-    <table class="tbl"><thead><tr><th>Produto</th><th>Categoria</th><th class="r">Balcão</th><th class="r">iFood</th><th class="r">Custo un.</th><th class="r">Lucro balcão</th><th></th></tr></thead>
+    <table class="tbl"><thead><tr><th>Produto</th><th>Categoria</th><th class="r">Balcão</th><th class="r">iFood</th>${verFin()?`<th class="r">Custo un.</th><th class="r">Lucro balcão</th>`:""}<th></th></tr></thead>
     <tbody>${list.length?list.map(p=>{const r=precificar(p);const fB=(num(p.imposto!=null?p.imposto:((db.config&&db.config.impostoPercent)||0))+num(p.cartao))/100;const lucroB=num(p.preco)*(1-fB)-r.custoTotal;const marg=p.preco>0?lucroB/num(p.preco)*100:0;const ifoodPreco=p.precoIfood!=null?num(p.precoIfood):((r.temParams&&r.temIfood)?r.precoI:null);return `
       <tr><td class="strong">${esc(p.nome)} ${p.ativo===false?'<span class="pill gray">inativo</span>':""} ${p.baixaVenda?'<span class="pill amber">baixa na venda</span>':""}</td><td>${esc(p.categoria||"—")}</td>
-      <td class="r strong">${BRL(p.preco)}</td><td class="r">${ifoodPreco!=null?BRL(ifoodPreco):'<span class="muted">—</span>'}</td><td class="r">${BRL(r.custoTotal)}</td>
-      <td class="r"><span class="pill ${marg>=40?"green":marg>=20?"amber":"red"}">${BRL(lucroB)} · ${NUM(marg,0)}%</span></td>
+      <td class="r strong">${BRL(p.preco)}</td><td class="r">${ifoodPreco!=null?BRL(ifoodPreco):'<span class="muted">—</span>'}</td>${verFin()?`<td class="r">${BRL(r.custoTotal)}</td>
+      <td class="r"><span class="pill ${marg>=40?"green":marg>=20?"amber":"red"}">${BRL(lucroB)} · ${NUM(marg,0)}%</span></td>`:""}
       <td><div class="rowacts">${editable?`
         <button class="btn sm ghost" data-act="edit-produto" data-id="${p.id}">Editar</button>
         <button class="btn sm ghost danger" data-act="del-produto" data-id="${p.id}">Excluir</button>`:""}
       </div></td></tr>`;}).join("")
-      :`<tr><td colspan="7">${emptyBox("🍽️","Nenhum produto","Cadastre os itens do cardápio: pratos, bebidas e adicionais.")}</td></tr>`}
+      :`<tr><td colspan="${verFin()?7:5}">${emptyBox("🍽️","Nenhum produto","Cadastre os itens do cardápio: pratos, bebidas e adicionais.")}</td></tr>`}
     </tbody></table>
   </div></div></div>`;
 }
@@ -1958,19 +1968,19 @@ function vVendas(){
       <button data-p="total" class="${mode==="total"?"on":""}">Tudo</button>
     </div>
     <div class="spacer"></div>
-    <span class="pill">Total: <b>${BRL(total)}</b></span>
+    ${verFin()?`<span class="pill">Total: <b>${BRL(total)}</b></span>
     <span class="pill green">Lucro: <b>${BRL(lucro)}</b></span>
-    <button class="btn ghost" data-act="export-vendas">⤓ CSV</button>
+    <button class="btn ghost" data-act="export-vendas">⤓ CSV</button>`:""}
     <button class="btn primary" data-act="nova-venda">＋ Nova venda</button>
   </div>
   <div class="card"><div class="card-body flush"><div class="tbl-wrap">
-    <table class="tbl"><thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th><th class="r">CMV</th><th class="r">Total</th><th></th></tr></thead>
+    <table class="tbl"><thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th>${verFin()?`<th class="r">CMV</th><th class="r">Total</th>`:""}<th></th></tr></thead>
     <tbody>${list.length?list.map(v=>`
       <tr><td class="mono">${fmtDate(v.data)}</td>
       <td>${(v.itens||[]).map(it=>{const p=byId(db.produtos,it.produtoId);return `${NUM(it.qtd)}× ${esc(p?p.nome:"—")}`;}).join(", ")}</td>
-      <td>${esc(v.pagamento||"—")}</td><td class="r muted">${BRL(vendaCMV(v))}</td><td class="r strong">${BRL(vendaTotal(v))}</td>
-      <td><div class="rowacts"><button class="btn sm ghost danger" data-act="del-venda" data-id="${v.id}">Excluir</button></div></td></tr>`).join("")
-      :`<tr><td colspan="6">${emptyBox("🧾","Sem vendas no período","Clique em “Nova venda” para registrar.")}</td></tr>`}
+      <td>${esc(v.pagamento||"—")}</td>${verFin()?`<td class="r muted">${BRL(vendaCMV(v))}</td><td class="r strong">${BRL(vendaTotal(v))}</td>`:""}
+      <td><div class="rowacts">${["admin","gerencia"].includes(state.user.nivel)?`<button class="btn sm ghost danger" data-act="del-venda" data-id="${v.id}">Excluir</button>`:""}</div></td></tr>`).join("")
+      :`<tr><td colspan="${verFin()?6:4}">${emptyBox("🧾","Sem vendas no período","Clique em “Nova venda” para registrar.")}</td></tr>`}
     </tbody></table>
   </div></div></div>`;
 }
@@ -2790,7 +2800,7 @@ document.addEventListener("click",e=>{
 
     /* vendas */
     case "nova-venda": if(can("vendas"))formVenda(); break;
-    case "del-venda": confirmDel("Excluir esta venda?",()=>{const v=byId(db.vendas,id);if(v&&v.baixas)aplicarBaixas(v.baixas,1);db.vendas=db.vendas.filter(x=>x.id!==id);}); break;
+    case "del-venda": if(!["admin","gerencia"].includes(state.user.nivel)){toast("Apenas administrador ou gerência pode excluir vendas.","err");break;} confirmDel("Excluir esta venda?",()=>{const v=byId(db.vendas,id);if(v&&v.baixas)aplicarBaixas(v.baixas,1);db.vendas=db.vendas.filter(x=>x.id!==id);}); break;
     case "add-item-venda": readDraftVenda(); {const a2=db.produtos.filter(p=>p.ativo!==false);draftItens.push({produtoId:a2[0].id,qtd:1,preco:a2[0].preco});} renderDraftVenda(); break;
     case "rm-item-venda": readDraftVenda(); draftItens.splice(+idx,1); renderDraftVenda(); break;
     case "nova-comanda": if(can("comandas"))formComanda(); break;
