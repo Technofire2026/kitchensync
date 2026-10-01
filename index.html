@@ -320,6 +320,27 @@ body{overflow-x:hidden}
   .search{flex:1 1 100%}
   .page-title{font-size:19px}
 }
+/* ===== Barra de atalhos inferior (celular) — estilo app ===== */
+.tabbar{display:none}
+@media(max-width:860px){
+  .tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:48;
+    background:color-mix(in srgb,var(--panel) 95%, transparent);backdrop-filter:blur(12px);
+    border-top:1px solid var(--line);box-shadow:0 -6px 20px -12px rgba(12,26,46,.4);
+    padding-bottom:env(safe-area-inset-bottom)}
+  .tabbar .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    padding:8px 2px 7px;color:var(--ink-3);text-decoration:none;font-size:10px;font-weight:600;
+    -webkit-tap-highlight-color:transparent;cursor:pointer;min-width:0;transition:color .14s}
+  .tabbar .tab .ti{font-size:19px;line-height:1}
+  .tabbar .tab .tl{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tabbar .tab.on{color:var(--brand)}
+  .tabbar .tab.on .ti{transform:translateY(-1px)}
+  .content{padding-bottom:86px!important}
+  .toast-wrap{bottom:96px}
+}
+@media(max-width:860px) and (display-mode:standalone){
+  .content{padding-bottom:calc(86px + env(safe-area-inset-bottom))!important}
+  .toast-wrap{bottom:calc(96px + env(safe-area-inset-bottom))}
+}
 </style>
 </head>
 <body>
@@ -762,6 +783,7 @@ function render(){
         ${topbar()}
         <div class="content" id="content"></div>
       </div>
+      ${tabbar()}
     </div>`;
   $("#content").innerHTML = viewHTML();
   afterRender();
@@ -834,6 +856,20 @@ function topbar(){
     ${syncIndicatorHTML()}
     <button class="btn ghost icon" data-act="theme" title="Tema claro/escuro">🌓</button>
   </div>`;
+}
+/* Barra de atalhos inferior (celular): Painel + 3 principais da função + Mais */
+function tabbar(){
+  const prio=["vendas","comandas","producao","insumos","movimentacao","compras","cotacoes","dre","kpis","despesas","funcionarios"];
+  const extras=prio.filter(id=>can(id)).slice(0,3);
+  const ids=["dashboard",...extras];
+  const short={dashboard:"Painel",vendas:"Vendas",comandas:"Mesas",producao:"Produção",insumos:"Estoque",movimentacao:"Cozinha",compras:"Compras",cotacoes:"Cotações",dre:"DRE",kpis:"KPIs",despesas:"Despesas",funcionarios:"Equipe"};
+  const cell=id=>{ const n=NAV.find(x=>x.id===id); if(!n) return ""; const on=state.view===id; return `<a class="tab ${on?"on":""}" data-view="${id}"><span class="ti">${n.ic}</span><span class="tl">${esc(short[id]||n.label)}</span></a>`; };
+  const maisOn=!ids.includes(state.view);
+  return `
+  <nav class="tabbar">
+    ${ids.map(cell).join("")}
+    <a class="tab ${maisOn?"on":""}" data-act="open-side"><span class="ti">☰</span><span class="tl">Mais</span></a>
+  </nav>`;
 }
 
 function viewHTML(){
