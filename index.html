@@ -162,6 +162,7 @@ textarea.input{resize:vertical;min-height:70px}
 .tb-name{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;color:var(--ink);line-height:1}
 .tb-name b{color:var(--brand);font-weight:800}
 .side-theme{display:none}
+.ct-q.scanned{background:var(--brand-soft);border-color:var(--brand);font-weight:700}
 .page-title{font-size:23px}
 .page-sub{color:var(--ink-3);font-size:13px;margin-top:2px}
 .topbar .spacer{flex:1}
@@ -1293,12 +1294,76 @@ function openCotacao(id){
       </div>`:`<div class="muted" style="font-size:12px;margin-top:10px">Nesta etapa, sua função (${esc(ROLES[state.user.nivel]||state.user.nivel)}) não tem ação a executar.</div>`}
       <div class="muted" style="font-size:11.5px;margin-top:8px">Fluxo: Requisição → Cotação → Aprovação da Gerência → Pedido → Recebimento (Estoque) → Liberação do Financeiro. Pagamento só é liberável após o recebimento.</div>
     </div></div>`;
+  const sbCloud = typeof SB!=="undefined" && SB.on;
+  const scanBar = (sbCloud && can("cotacoes") && suppliers.length) ? `
+    <div class="card" style="margin-bottom:12px;border-color:var(--brand);background:var(--brand-soft)"><div class="card-body" style="padding:12px 14px">
+      <div style="font-size:13px"><b>📷 Ler proposta por foto (IA)</b> — fotografe (ou anexe o print do WhatsApp/e-mail) o orçamento do fornecedor e a IA preenche a coluna dele automaticamente.</div>
+      <div class="hstack" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+        ${suppliers.map(f=>`<button class="btn sm" data-act="scan-proposta" data-cid="${c.id}" data-fid="${f.id}">📷 ${esc(f.nome)}</button>`).join("")}
+      </div>
+      <div class="muted" style="font-size:11.5px;margin-top:6px">A IA <b>sugere</b> os valores (destacados em azul) — confira e ajuste antes de salvar.</div>
+    </div></div>` : "";
   openModal("Cotação — "+esc(c.nome||"")+" · "+fmtDate(c.data),
-    fluxo+enviar+`<div class="field full"><label style="font-weight:700">Preços recebidos (por unidade)</label></div>`+tabela+cotaHistoricoHTML(c),
+    fluxo+enviar+scanBar+`<div class="field full"><label style="font-weight:700">Preços recebidos (por unidade)</label></div>`+tabela+cotaHistoricoHTML(c),
     ()=>{ const c2=byId(db.cotacoes,c.id); const res={};
       document.querySelectorAll(".ct-q").forEach(inp=>{const fid=inp.getAttribute("data-fid");const ix=+inp.getAttribute("data-idx");const v=inp.value===""?null:num(inp.value); if(!res[fid])res[fid]=[]; res[fid][ix]=v;});
       c2.respostas=res; save(); toast("Cotações salvas.","ok"); return true; },"wide");
   updateCotComparacao();
+}
+/* Lê a proposta de um fornecedor por foto e preenche a coluna dele via IA */
+function scanProposta(cid, fid){
+  const c=byId(db.cotacoes,cid); if(!c) return;
+  if(!(typeof SB!=="undefined" && SB.on)){ toast("A leitura por IA só funciona na versão na nuvem (Supabase).","err"); return; }
+  const inp=document.createElement("input"); inp.type="file"; inp.accept="image/*"; inp.multiple=true; inp.style.display="none";
+  document.body.appendChild(inp);
+  inp.addEventListener("change", async ()=>{
+    const files=[...(inp.files||[])]; inp.remove();
+    if(!files.length) return;
+    const forn=byId(db.fornecedores,fid);
+    const btns=[...document.querySelectorAll('[data-act="scan-proposta"][data-fid="'+fid+'"]')];
+    const prev=btns[0]?btns[0].textContent:""; btns.forEach(b=>{ b.disabled=true; b.textContent="⏳ Lendo…"; });
+    toast("Lendo a proposta com IA… leva alguns segundos.","ok");
+    try{
+      const images=[];
+      for(const f of files){ const d=await downscaleImage(f,1568,0.82); if(d) images.push(d); }
+      if(!images.length){ toast("Não consegui ler a imagem. Tente outra foto.","err"); return; }
+      const itens=(c.itens||[]).map((it,idx)=>{ const i=byId(db.insumos,it.insumoId); return {idx, nome:(i?i.nome:""), marca:(i&&i.marca)||"", unidade:(i?i.unidade:""), qtd:num(it.qtd)}; });
+      const {data,error}=await SB.client.functions.invoke("analisar-proposta",{body:{fornecedor:(forn?forn.nome:""), itens, images}});
+      let msg=null;
+      if(error){ msg="Não foi possível ler a proposta."; try{ if(error.context&&error.context.json){ const j=await error.context.json(); if(j&&j.error) msg=j.error; } }catch(_){} }
+      else if(data&&data.error){ msg=data.error; }
+      if(msg){ toast(msg,"err"); return; }
+      let n=0;
+      (data&&Array.isArray(data.itens)?data.itens:[]).forEach(r=>{
+        if(r && r.encontrado && r.preco!=null && !isNaN(r.preco)){
+          const el=document.querySelector('.ct-q[data-fid="'+fid+'"][data-idx="'+r.idx+'"]');
+          if(el){ el.value=(Math.round(r.preco*100)/100); el.classList.add("scanned"); n++; }
+        }
+      });
+      if(typeof updateCotComparacao==="function") updateCotComparacao();
+      toast(n?("Proposta lida: "+n+" item(ns) preenchido(s). Confira os valores em azul e ajuste se preciso."):"A IA não encontrou preços legíveis. Tente uma foto mais nítida e reta.", n?"ok":"err");
+    }catch(e){ toast("Erro ao ler a proposta. Verifique a conexão e tente novamente.","err"); }
+    finally{ btns.forEach(b=>{ b.disabled=false; if(prev) b.textContent=prev; }); }
+  });
+  inp.click();
+}
+function downscaleImage(file, maxEdge, quality){
+  return new Promise(res=>{
+    try{
+      const url=URL.createObjectURL(file); const img=new Image();
+      img.onload=()=>{ try{
+        let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+        const scale=Math.min(1,(maxEdge||1568)/Math.max(w,h));
+        w=Math.max(1,Math.round(w*scale)); h=Math.max(1,Math.round(h*scale));
+        const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+        cv.getContext("2d").drawImage(img,0,0,w,h);
+        const d=cv.toDataURL("image/jpeg", quality||0.82);
+        URL.revokeObjectURL(url); res(d);
+      }catch(e){ res(null); } };
+      img.onerror=()=>{ res(null); };
+      img.src=url;
+    }catch(e){ res(null); }
+  });
 }
 function updateCotComparacao(){
   const wrap=document.getElementById("ct-table"); if(!wrap) return;
@@ -2924,6 +2989,7 @@ document.addEventListener("click",e=>{
     case "add-user": formUser(); break;
     case "add-user-cloud": formUserCloud(); break;
     case "create-tenant": doCreateTenant(); break;
+    case "scan-proposta": scanProposta(a.getAttribute("data-cid"), a.getAttribute("data-fid")); break;
     case "curso-nova-aba": try{ window.open("curso.html","_blank"); }catch(e){} break;
     case "edit-user": formUser(byId(db.usuarios,id)); break;
     case "del-user": confirmDel("Excluir este funcionário?",()=>{db.usuarios=db.usuarios.filter(x=>x.id!==id);}); break;
