@@ -1297,7 +1297,7 @@ function openCotacao(id){
   const sbCloud = typeof SB!=="undefined" && SB.on;
   const scanBar = (sbCloud && can("cotacoes") && suppliers.length) ? `
     <div class="card" style="margin-bottom:12px;border-color:var(--brand);background:var(--brand-soft)"><div class="card-body" style="padding:12px 14px">
-      <div style="font-size:13px"><b>📷 Ler proposta por foto (IA)</b> — fotografe (ou anexe o print do WhatsApp/e-mail) o orçamento do fornecedor e a IA preenche a coluna dele automaticamente.</div>
+      <div style="font-size:13px"><b>📷 Ler proposta por foto/PDF (IA)</b> — fotografe, ou anexe o <b>print</b> ou o <b>PDF</b> do orçamento (WhatsApp/e-mail) e a IA preenche a coluna do fornecedor automaticamente.</div>
       <div class="hstack" style="gap:8px;flex-wrap:wrap;margin-top:8px">
         ${suppliers.map(f=>`<button class="btn sm" data-act="scan-proposta" data-cid="${c.id}" data-fid="${f.id}">📷 ${esc(f.nome)}</button>`).join("")}
       </div>
@@ -1314,7 +1314,7 @@ function openCotacao(id){
 function scanProposta(cid, fid){
   const c=byId(db.cotacoes,cid); if(!c) return;
   if(!(typeof SB!=="undefined" && SB.on)){ toast("A leitura por IA só funciona na versão na nuvem (Supabase).","err"); return; }
-  const inp=document.createElement("input"); inp.type="file"; inp.accept="image/*"; inp.multiple=true; inp.style.display="none";
+  const inp=document.createElement("input"); inp.type="file"; inp.accept="image/*,application/pdf"; inp.multiple=true; inp.style.display="none";
   document.body.appendChild(inp);
   inp.addEventListener("change", async ()=>{
     const files=[...(inp.files||[])]; inp.remove();
@@ -1325,8 +1325,16 @@ function scanProposta(cid, fid){
     toast("Lendo a proposta com IA… leva alguns segundos.","ok");
     try{
       const images=[];
-      for(const f of files){ const d=await downscaleImage(f,1568,0.82); if(d) images.push(d); }
-      if(!images.length){ toast("Não consegui ler a imagem. Tente outra foto.","err"); return; }
+      for(const f of files){
+        const isPdf = (f.type==="application/pdf") || /\.pdf$/i.test(f.name||"");
+        if(isPdf){
+          if(f.size>9*1024*1024){ toast("O PDF “"+(f.name||"")+"” é grande demais (máx. ~9 MB). Envie um PDF menor ou fotos.","err"); continue; }
+          const d=await readFileDataURL(f); if(d) images.push(d);
+        } else {
+          const d=await downscaleImage(f,1568,0.82); if(d) images.push(d);
+        }
+      }
+      if(!images.length){ toast("Não consegui ler o arquivo. Tente uma foto nítida ou um PDF menor.","err"); return; }
       const itens=(c.itens||[]).map((it,idx)=>{ const i=byId(db.insumos,it.insumoId); return {idx, nome:(i?i.nome:""), marca:(i&&i.marca)||"", unidade:(i?i.unidade:""), qtd:num(it.qtd)}; });
       const {data,error}=await SB.client.functions.invoke("analisar-proposta",{body:{fornecedor:(forn?forn.nome:""), itens, images}});
       let msg=null;
@@ -1346,6 +1354,9 @@ function scanProposta(cid, fid){
     finally{ btns.forEach(b=>{ b.disabled=false; if(prev) b.textContent=prev; }); }
   });
   inp.click();
+}
+function readFileDataURL(file){
+  return new Promise(res=>{ try{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>res(null); r.readAsDataURL(file); }catch(e){ res(null); } });
 }
 function downscaleImage(file, maxEdge, quality){
   return new Promise(res=>{
