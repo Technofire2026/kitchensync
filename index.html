@@ -163,6 +163,18 @@ textarea.input{resize:vertical;min-height:70px}
 .tb-name b{color:var(--brand);font-weight:800}
 .side-theme{display:none}
 .ct-q.scanned{background:var(--brand-soft);border-color:var(--brand);font-weight:700}
+.pweye-wrap{position:relative;display:block}
+.pweye-wrap input{padding-right:42px}
+.pweye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;opacity:.65;line-height:1;padding:4px}
+.pweye:hover{opacity:1}
+.fld-st{font-size:11.5px;color:var(--ink-3);margin-top:4px;min-height:14px}
+.fld-st.ok{color:var(--basil)} .fld-st.err{color:var(--danger)}
+.bell-badge{position:absolute;top:1px;right:1px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:var(--danger);color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 6px -2px rgba(0,0,0,.4)}
+.avlist{display:flex;flex-direction:column;gap:8px}
+.avitem{border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:var(--panel)}
+.avitem.unread{border-color:var(--brand);background:var(--brand-soft)}
+.avitem .avtx{font-size:14px;line-height:1.5}
+.avitem .avmeta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px}
 .page-title{font-size:23px}
 .page-sub{color:var(--ink-3);font-size:13px;margin-top:2px}
 .topbar .spacer{flex:1}
@@ -444,6 +456,7 @@ const NAV = [
  {id:"funcionarios",g:"Sistema",  label:"Funcionários",       ic:"👥", roles:["admin","gerencia"]},
  {id:"config",     g:"Sistema",   label:"Configurações",      ic:"⚙️", roles:["admin"]},
  {id:"curso",      g:"Ajuda",     label:"Treinamento",        ic:"🎓", roles:["admin","gerencia","operacao","estoque","compras","financeiro"]},
+ {id:"manual",     g:"Ajuda",     label:"Manual de Compras",  ic:"📘", roles:["admin","gerencia","operacao","estoque","compras","financeiro"]},
 ];
 const can = view => { const n=NAV.find(x=>x.id===view); return n && state.user && n.roles.includes(state.user.nivel); };
 /* Quem pode ver faturamento, lucro e custos (financeiro). Demais funções operam sem ver valores de venda/lucro. */
@@ -547,6 +560,7 @@ function ensureSchema(){
   if(!Array.isArray(db.perdas)) db.perdas=[];
   if(!Array.isArray(db.contagens)) db.contagens=[];
   if(!Array.isArray(db.cotacoes)) db.cotacoes=[];
+  if(!Array.isArray(db.notificacoes)) db.notificacoes=[];
   (db.cotacoes||[]).forEach(c=>{ if(!c.status) c.status="rascunho"; if(!Array.isArray(c.historico)) c.historico=[]; });
   if(!db.config) db.config={};
   if(db.config.perdaLimite==null) db.config.perdaLimite=5;
@@ -859,7 +873,8 @@ function topbar(){
     comandas:"Mesas e comandas do salão — giro de mesa e permanência",
     funcionarios:"Equipe e níveis de acesso",
     config:"Empresa, impostos e dados",
-    curso:"Curso de treinamento — aprenda a usar cada funcionalidade"
+    curso:"Curso de treinamento — aprenda a usar cada funcionalidade",
+    manual:"Manual do fluxo de compras — etapas, responsáveis e como a solicitação chega"
   };
   return `
   <div class="topbar">
@@ -867,6 +882,7 @@ function topbar(){
     <div class="tb-titles"><div class="page-title">${n?n.label:""}</div><div class="page-sub">${subs[state.view]||""}</div></div>
     <div class="spacer"></div>
     ${syncIndicatorHTML()}
+    ${bellHTML()}
     <button class="btn ghost icon tb-theme" data-act="theme" title="Tema claro/escuro">🌓</button>
     <button class="btn icon ghost menu-btn" data-act="open-side" aria-label="Menu">☰</button>
   </div>`;
@@ -911,6 +927,7 @@ function viewHTML(){
     case "funcionarios": return vFuncionarios();
     case "config": return vConfig();
     case "curso": return vCurso();
+    case "manual": return vManual();
     default: return "";
   }
 }
@@ -1112,8 +1129,49 @@ function cotaMove(id,to){
   if(to==="recebido"){ c.recebimento={data:todayISO(),userId:state.user.id,obs}; }
   if(to==="liberado_pagamento"){ c.pagamento={data:todayISO(),userId:state.user.id,obs}; }
   c.historico=c.historico||[]; c.historico.push({ts:Date.now(),data:todayISO(),userId:state.user.id,de,para:to,obs});
+  notificarProximaEtapa(c,to);
   save(); toast("Etapa registrada: "+ (COTA_STATUS[to]?COTA_STATUS[to].label:to) +".","ok");
   openCotacao(id);
+}
+/* ----- Avisos internos ----- */
+function notificar(texto, roles, refId, tipo){
+  db.notificacoes=db.notificacoes||[];
+  db.notificacoes.push({id:uid(), ts:Date.now(), data:todayISO(), texto, roles:roles||[], refId:refId||"", tipo:tipo||"info", lidaPor:[]});
+  if(db.notificacoes.length>200) db.notificacoes=db.notificacoes.slice(-200);
+}
+function notificarProximaEtapa(c, to){
+  try{
+    const acts=COTA_FLOW[to]||[];
+    if(!acts.length) return; // etapa final — ninguém a avisar
+    const roles=[...new Set(acts.flatMap(a=>a.roles||[]))];
+    const labels=[...new Set(acts.map(a=>a.label))].join(" / ");
+    const etapa=(COTA_STATUS[to]?COTA_STATUS[to].label:to);
+    notificar("Cotação “"+(c.nome||"sem nome")+"” chegou em "+etapa+". Ação pendente: "+labels+".", roles, c.id, "compra");
+  }catch(e){}
+}
+function avisosNaoLidos(){
+  const u=state.user; if(!u) return [];
+  return (db.notificacoes||[]).filter(n=>(n.roles||[]).includes(u.nivel) && !((n.lidaPor||[]).includes(u.id)));
+}
+function bellHTML(){
+  const n=avisosNaoLidos().length;
+  return `<button class="btn ghost icon tb-bell" data-act="avisos" title="Avisos" style="position:relative">🔔${n?`<span class="bell-badge">${n>9?"9+":n}</span>`:""}</button>`;
+}
+function abrirAvisos(){
+  const u=state.user; if(!u) return;
+  const mine=(db.notificacoes||[]).filter(n=>(n.roles||[]).includes(u.nivel)).sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,60);
+  const body = mine.length ? `<div class="avlist">`+mine.map(n=>{
+      const unread=!((n.lidaPor||[]).includes(u.id));
+      return `<div class="avitem ${unread?"unread":""}">
+        <div class="avtx">${esc(n.texto)}</div>
+        <div class="avmeta"><span class="muted">${fmtDate(n.data)}</span>${n.refId?`<button class="btn sm ghost" data-act="abrir-cota-aviso" data-id="${esc(n.refId)}">Abrir cotação</button>`:""}</div>
+      </div>`;
+    }).join("")+`</div>`
+    : emptyBox("🔔","Sem avisos","Você será avisado aqui quando uma cotação chegar para a sua função.");
+  openModal("Avisos", body, null, "", true);
+  let changed=false;
+  (db.notificacoes||[]).forEach(n=>{ if((n.roles||[]).includes(u.nivel) && !((n.lidaPor||[]).includes(u.id))){ n.lidaPor=n.lidaPor||[]; n.lidaPor.push(u.id); changed=true; } });
+  if(changed){ save(); const bell=document.querySelector(".tb-bell"); if(bell){ const t=document.createElement("div"); t.innerHTML=bellHTML(); if(t.firstElementChild) bell.replaceWith(t.firstElementChild); } }
 }
 /* Recebimento: dá entrada no estoque e atualiza custo médio pelo preço do fornecedor escolhido */
 function cotaReceber(c){
@@ -1416,18 +1474,50 @@ function formFornecedor(f){
   f=f||{ativo:true};
   openModal("Fornecedor",`
     <div class="form-grid">
+      <div class="field"><label>CNPJ <span class="muted" style="font-weight:400">(preenche sozinho)</span></label><input class="input" id="f-cnpj" value="${esc(f.cnpj||"")}" placeholder="00.000.000/0000-00" inputmode="numeric"><div class="fld-st" id="f-cnpj-st"></div></div>
+      <div class="field"><label>CEP <span class="muted" style="font-weight:400">(preenche o endereço)</span></label><input class="input" id="f-cep" value="${esc(f.cep||"")}" placeholder="00000-000" inputmode="numeric"><div class="fld-st" id="f-cep-st"></div></div>
       <div class="field full"><label>Nome / razão social *</label><input class="input" id="f-nome" value="${esc(f.nome||"")}"></div>
-      <div class="field"><label>CNPJ</label><input class="input" id="f-cnpj" value="${esc(f.cnpj||"")}"></div>
+      <div class="field full"><label>Endereço</label><input class="input" id="f-endereco" value="${esc(f.endereco||"")}"></div>
+      <div class="field"><label>Número</label><input class="input" id="f-numero" value="${esc(f.numero||"")}"></div>
+      <div class="field"><label>Bairro</label><input class="input" id="f-bairro" value="${esc(f.bairro||"")}"></div>
+      <div class="field"><label>Cidade</label><input class="input" id="f-cidade" value="${esc(f.cidade||"")}"></div>
+      <div class="field"><label>UF</label><input class="input" id="f-uf" maxlength="2" value="${esc(f.uf||"")}"></div>
       <div class="field"><label>Contato</label><input class="input" id="f-contato" value="${esc(f.contato||"")}"></div>
       <div class="field"><label>Telefone</label><input class="input" id="f-tel" value="${esc(f.tel||"")}"></div>
-      <div class="field"><label>E-mail</label><input class="input" id="f-email" value="${esc(f.email||"")}"></div>
+      <div class="field full"><label>E-mail</label><input class="input" id="f-email" value="${esc(f.email||"")}"></div>
       <div class="field full"><label>Observações</label><input class="input" id="f-obs" value="${esc(f.obs||"")}"></div>
       <div class="field full"><label class="inl"><input type="checkbox" id="f-ativo" ${f.ativo!==false?"checked":""}> Fornecedor ativo</label></div>
     </div>`,
     ()=>{ const nome=$("#f-nome").value.trim(); if(!nome){toast("Informe o nome.","err");return false;}
-      const o={nome,cnpj:$("#f-cnpj").value.trim(),contato:$("#f-contato").value.trim(),tel:$("#f-tel").value.trim(),email:$("#f-email").value.trim(),obs:$("#f-obs").value.trim(),ativo:$("#f-ativo").checked};
+      const o={nome,cnpj:$("#f-cnpj").value.trim(),cep:$("#f-cep").value.trim(),endereco:$("#f-endereco").value.trim(),numero:$("#f-numero").value.trim(),bairro:$("#f-bairro").value.trim(),cidade:$("#f-cidade").value.trim(),uf:$("#f-uf").value.trim().toUpperCase(),contato:$("#f-contato").value.trim(),tel:$("#f-tel").value.trim(),email:$("#f-email").value.trim(),obs:$("#f-obs").value.trim(),ativo:$("#f-ativo").checked};
       if(f.id){ Object.assign(byId(db.fornecedores,f.id),o); } else { o.id=uid(); db.fornecedores.push(o); }
-      save(); toast("Fornecedor salvo.","ok"); return true; });
+      save(); toast("Fornecedor salvo.","ok"); return true; },"wide");
+  setTimeout(()=>{ const c=$("#f-cnpj"); if(c) c.addEventListener("blur",buscaCNPJ); const p=$("#f-cep"); if(p) p.addEventListener("blur",buscaCEP); },0);
+}
+async function buscaCNPJ(){
+  const el=$("#f-cnpj"); if(!el) return; const d=(el.value||"").replace(/\D/g,""); const st=$("#f-cnpj-st");
+  if(d.length!==14){ if(st&&el.value.trim()){ st.className="fld-st err"; st.textContent="CNPJ deve ter 14 dígitos."; } return; }
+  if(st){ st.className="fld-st"; st.textContent="buscando…"; }
+  try{
+    const r=await fetch("https://brasilapi.com.br/api/cnpj/v1/"+d); if(!r.ok) throw 0; const j=await r.json();
+    const seOk=(id,v)=>{ const e=$(id); if(e&&v) e.value=v; };
+    const seVazio=(id,v)=>{ const e=$(id); if(e&&v&&!e.value.trim()) e.value=v; };
+    seVazio("#f-nome", j.razao_social||j.nome_fantasia||"");
+    seOk("#f-cep",(j.cep||"").toString()); seOk("#f-endereco",j.logradouro||""); seOk("#f-numero",(j.numero||"").toString()); seOk("#f-bairro",j.bairro||""); seOk("#f-cidade",j.municipio||""); seOk("#f-uf",(j.uf||"").toUpperCase());
+    seVazio("#f-tel",(j.ddd_telefone_1||"").toString()); seVazio("#f-email",(j.email||"").toLowerCase());
+    if(st){ st.className="fld-st ok"; st.textContent="✓ dados preenchidos — confira e ajuste"; }
+  }catch(e){ if(st){ st.className="fld-st err"; st.textContent="CNPJ não encontrado — preencha manualmente."; } }
+}
+async function buscaCEP(){
+  const el=$("#f-cep"); if(!el) return; const d=(el.value||"").replace(/\D/g,""); const st=$("#f-cep-st");
+  if(d.length!==8){ if(st&&el.value.trim()){ st.className="fld-st err"; st.textContent="CEP deve ter 8 dígitos."; } return; }
+  if(st){ st.className="fld-st"; st.textContent="buscando…"; }
+  try{
+    const r=await fetch("https://viacep.com.br/ws/"+d+"/json/"); if(!r.ok) throw 0; const j=await r.json(); if(j.erro) throw 0;
+    const seOk=(id,v)=>{ const e=$(id); if(e&&v) e.value=v; };
+    seOk("#f-endereco",j.logradouro||""); seOk("#f-bairro",j.bairro||""); seOk("#f-cidade",j.localidade||""); seOk("#f-uf",(j.uf||"").toUpperCase());
+    if(st){ st.className="fld-st ok"; st.textContent="✓ endereço preenchido"; }
+  }catch(e){ if(st){ st.className="fld-st err"; st.textContent="CEP não encontrado."; } }
 }
 
 /* ============================================================
@@ -2790,6 +2880,17 @@ function vCurso(){
   </div>
   <div class="muted" style="font-size:12px;margin-top:8px">Se o curso não carregar aqui, verifique se o arquivo <b>curso.html</b> foi publicado junto do app (mesmo endereço) — ou use “Abrir em nova aba”.</div>`;
 }
+function vManual(){
+  return `
+  <div class="toolbar">
+    <div class="muted" style="font-size:13px;flex:1;min-width:180px">Manual do fluxo de compras — cada etapa, quem faz e como a solicitação chega a cada função.</div>
+    <button class="btn ghost" data-act="manual-nova-aba">↗ Abrir em nova aba</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <iframe src="manual-compras.html" title="Manual de Compras" loading="lazy" style="width:100%;height:calc(100vh - 190px);min-height:520px;border:0;display:block;background:#fff"></iframe>
+  </div>
+  <div class="muted" style="font-size:12px;margin-top:8px">Se não carregar aqui, verifique se o arquivo <b>manual-compras.html</b> foi publicado junto do app (mesmo endereço) — ou use “Abrir em nova aba”.</div>`;
+}
 
 /* ============================================================
    CONFIG
@@ -2845,7 +2946,7 @@ function vConfig(){
    ============================================================ */
 function toolbar(placeholder,right){
   return `<div class="toolbar">
-    <div class="search"><input class="input" id="searchbox" placeholder="${esc(placeholder)}" value="${esc(state.search)}"></div>
+    <div class="search"><input class="input" id="searchbox" list="searchlist" autocomplete="off" placeholder="${esc(placeholder)}" value="${esc(state.search)}"><datalist id="searchlist"></datalist></div>
     <div class="spacer"></div>${right||""}</div>`;
 }
 
@@ -2867,7 +2968,19 @@ function openModal(title,body,onSave,size,readonly){
     <div class="modal-foot">${foot}</div></div>`;
   document.body.appendChild(wrap);
   wrap.addEventListener("mousedown",e=>{ if(e.target===wrap) closeModal(); });
+  attachPasswordEyes(wrap);
   const first=wrap.querySelector("input,select,textarea"); if(first) setTimeout(()=>first.focus(),30);
+}
+/* Adiciona o olho (mostrar/ocultar) em todo campo de senha */
+function attachPasswordEyes(root){
+  (root||document).querySelectorAll('input[type="password"]').forEach(inp=>{
+    if(inp.dataset.eye) return; inp.dataset.eye="1";
+    const wrap=document.createElement("span"); wrap.className="pweye-wrap";
+    if(inp.parentNode){ inp.parentNode.insertBefore(wrap,inp); wrap.appendChild(inp); }
+    const b=document.createElement("button"); b.type="button"; b.className="pweye"; b.setAttribute("aria-label","Mostrar/ocultar senha"); b.textContent="👁";
+    b.addEventListener("click",()=>{ const hidden=inp.type==="password"; inp.type=hidden?"text":"password"; b.textContent=hidden?"🙈":"👁"; try{inp.focus();}catch(e){} });
+    wrap.appendChild(b);
+  });
 }
 function closeModal(){ const m=$("#modal"); if(m) m.remove(); modalSave=null; }
 async function trySave(){ if(!modalSave){closeModal();return;} const btn=document.querySelector("#modal [data-act='modal-save']"); let prev; if(btn){ prev=btn.textContent; } let ok=modalSave(); if(ok&&typeof ok.then==="function"){ if(btn){ btn.disabled=true; btn.textContent="Aguarde…"; } try{ ok=await ok; }catch(e){ ok=false; } if(btn){ btn.disabled=false; if(prev!=null) btn.textContent=prev; } } if(ok!==false){ closeModal(); render(); } }
@@ -2884,7 +2997,19 @@ function confirmDel(msg,fn){ if(confirm(msg)){ fn(); save(); render(); } }
 function afterRender(){
   const sb=$("#searchbox");
   if(sb){ sb.addEventListener("input",e=>{ state.search=e.target.value; const pos=e.target.selectionStart; render(); const nb=$("#searchbox"); if(nb){nb.focus();nb.setSelectionRange(pos,pos);} }); }
+  preencherSugestoesBusca();
   const dm=$("#dre-month"); if(dm) dm.addEventListener("change",e=>{state.dreMonth=e.target.value;render();});
+  attachPasswordEyes(document);
+}
+/* Sugestões de autocomplete na busca: nomes já cadastrados da tela atual */
+function preencherSugestoesBusca(){
+  const dl=$("#searchlist"); if(!dl) return;
+  const nomes=new Set();
+  document.querySelectorAll(".content .tbl tbody td.strong").forEach(td=>{
+    const t=(td.textContent||"").trim().split("\n")[0].trim();
+    if(t && t.length>1) nomes.add(t);
+  });
+  dl.innerHTML=[...nomes].slice(0,60).map(n=>`<option value="${esc(n)}"></option>`).join("");
 }
 
 document.addEventListener("click",e=>{
@@ -3002,6 +3127,9 @@ document.addEventListener("click",e=>{
     case "create-tenant": doCreateTenant(); break;
     case "scan-proposta": scanProposta(a.getAttribute("data-cid"), a.getAttribute("data-fid")); break;
     case "curso-nova-aba": try{ window.open("curso.html","_blank"); }catch(e){} break;
+    case "manual-nova-aba": try{ window.open("manual-compras.html","_blank"); }catch(e){} break;
+    case "avisos": abrirAvisos(); break;
+    case "abrir-cota-aviso": closeModal(); openCotacao(a.getAttribute("data-id")); break;
     case "edit-user": formUser(byId(db.usuarios,id)); break;
     case "del-user": confirmDel("Excluir este funcionário?",()=>{db.usuarios=db.usuarios.filter(x=>x.id!==id);}); break;
 
@@ -3143,7 +3271,7 @@ function syncIndicatorHTML(){
 }
 const CLOUD = {
   on:false, db:null, user:null, uid:null, isOwner:false, canWrite:true, myName:"",
-  cols:["config","usuarios","fornecedores","insumos","produtos","compras","movimentacoes","producoes","perdas","contagens","cotacoes","vendas","despesas","comandas"],
+  cols:["config","usuarios","fornecedores","insumos","produtos","compras","movimentacoes","producoes","perdas","contagens","cotacoes","vendas","despesas","comandas","notificacoes"],
   hashes:{}, subs:[], pushTimer:null, status:"idle",
   docPath(c){ return "state/"+c; },
   hash(x){ try{ const s=JSON.stringify(x); let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return s.length+":"+h; }catch(e){ return "e"+Math.random(); } },
@@ -3216,7 +3344,7 @@ const CLOUD = {
 };
 const SB = {
   on:false, client:null, uid:null, email:"", canWrite:true, tenantId:null,
-  cols:["config","usuarios","fornecedores","insumos","produtos","compras","movimentacoes","producoes","perdas","contagens","cotacoes","vendas","despesas","comandas"],
+  cols:["config","usuarios","fornecedores","insumos","produtos","compras","movimentacoes","producoes","perdas","contagens","cotacoes","vendas","despesas","comandas","notificacoes"],
   hashes:{}, pushTimer:null, status:"idle",
   configured(){ return typeof SUPA_URL==="string" && SUPA_URL && typeof SUPA_KEY==="string" && SUPA_KEY && typeof supabase!=="undefined" && supabase.createClient; },
   async init(){ if(!this.configured()) return false; try{ this.client=supabase.createClient(SUPA_URL,SUPA_KEY); this.on=true; return true; }catch(e){ return false; } },
@@ -3337,6 +3465,7 @@ function renderAuth(err){
     </div></div>
   </div>`;
   const s=$("#lg-senha"); if(s) s.addEventListener("keydown",e=>{ if(e.key==="Enter") doSbAuth(); });
+  attachPasswordEyes($("#root"));
 }
 async function doSbAuth(){
   const email=($("#lg-email").value||"").trim(), senha=$("#lg-senha").value||"";
