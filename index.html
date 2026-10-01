@@ -410,6 +410,7 @@ const NAV = [
  {id:"kpis",       g:"Financeiro", label:"Margens & KPIs",    ic:"👑", roles:["admin","gerencia","financeiro"]},
  {id:"funcionarios",g:"Sistema",  label:"Funcionários",       ic:"👥", roles:["admin","gerencia"]},
  {id:"config",     g:"Sistema",   label:"Configurações",      ic:"⚙️", roles:["admin"]},
+ {id:"curso",      g:"Ajuda",     label:"Treinamento",        ic:"🎓", roles:["admin","gerencia","operacao","estoque","compras","financeiro"]},
 ];
 const can = view => { const n=NAV.find(x=>x.id===view); return n && state.user && n.roles.includes(state.user.nivel); };
 /* Quem pode ver faturamento, lucro e custos (financeiro). Demais funções operam sem ver valores de venda/lucro. */
@@ -822,7 +823,8 @@ function topbar(){
     kpis:"Margens, CMV teórico × real e performance por conceito",
     comandas:"Mesas e comandas do salão — giro de mesa e permanência",
     funcionarios:"Equipe e níveis de acesso",
-    config:"Empresa, impostos e dados"
+    config:"Empresa, impostos e dados",
+    curso:"Curso de treinamento — aprenda a usar cada funcionalidade"
   };
   return `
   <div class="topbar">
@@ -858,6 +860,7 @@ function viewHTML(){
     case "kpis": return vKpis();
     case "funcionarios": return vFuncionarios();
     case "config": return vConfig();
+    case "curso": return vCurso();
     default: return "";
   }
 }
@@ -2649,6 +2652,21 @@ function formUserCloud(){
 }
 
 /* ============================================================
+   TREINAMENTO (curso embutido)
+   ============================================================ */
+function vCurso(){
+  return `
+  <div class="toolbar">
+    <div class="muted" style="font-size:13px;flex:1;min-width:180px">Curso completo de uso do Kitchen Sync — aprenda cada funcionalidade passo a passo. Abre aqui dentro; para ver em tela cheia, use o botão ao lado.</div>
+    <button class="btn ghost" data-act="curso-nova-aba">↗ Abrir em nova aba</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <iframe src="curso.html" title="Treinamento Kitchen Sync" loading="lazy" style="width:100%;height:calc(100vh - 190px);min-height:520px;border:0;display:block;background:#fff"></iframe>
+  </div>
+  <div class="muted" style="font-size:12px;margin-top:8px">Se o curso não carregar aqui, verifique se o arquivo <b>curso.html</b> foi publicado junto do app (mesmo endereço) — ou use “Abrir em nova aba”.</div>`;
+}
+
+/* ============================================================
    CONFIG
    ============================================================ */
 function vConfig(){
@@ -2856,6 +2874,7 @@ document.addEventListener("click",e=>{
     /* users */
     case "add-user": formUser(); break;
     case "add-user-cloud": formUserCloud(); break;
+    case "curso-nova-aba": try{ window.open("curso.html","_blank"); }catch(e){} break;
     case "edit-user": formUser(byId(db.usuarios,id)); break;
     case "del-user": confirmDel("Excluir este funcionário?",()=>{db.usuarios=db.usuarios.filter(x=>x.id!==id);}); break;
 
