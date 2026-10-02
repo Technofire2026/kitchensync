@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kitchen Sync — Manual de Configuração Fiscal (NFC-e)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0c1a2e; --ink-2:#46566c; --ink-3:#7e8ea4;
+  --bg:#eef3fb; --panel:#ffffff; --panel-2:#e9f1fc; --line:#dce6f4;
+  --brand:#2b6bff; --brand-2:#5b8dff; --brand-strong:#1a4fd6; --brand-soft:#e3ecff;
+  --basil:#12b07a; --basil-soft:#dcf6ee; --amber:#f59e0b; --amber-soft:#fdeecd; --red:#e5484d; --red-soft:#fde5e6;
+  --shadow:0 1px 2px rgba(12,26,46,.04), 0 10px 26px -14px rgba(16,42,92,.20);
+}
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6;font-size:15px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:28px 22px 80px}
+.hero{background:radial-gradient(120% 120% at 12% 8%, #2f6bff 0%, #1c4fd6 32%, #122f86 64%, #0a1f4d 100%);color:#fff;border-radius:22px;padding:32px 30px;margin-bottom:22px;box-shadow:var(--shadow)}
+.hero .brand{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.hero .brand img{width:52px;height:52px;border-radius:14px;display:block}
+.hero .brand .nm{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:22px}
+.hero h1{font-family:'Bricolage Grotesque',sans-serif;font-size:30px;line-height:1.1;margin:4px 0 8px}
+.hero p{color:#d7e4ff;margin:0;max-width:64ch}
+h2{font-family:'Bricolage Grotesque',sans-serif;font-size:21px;margin:30px 0 10px}
+h3{font-size:16px;margin:18px 0 6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:20px 22px;margin:14px 0}
+.lead{color:var(--ink-2)}
+.callout{border-radius:12px;padding:13px 16px;margin:14px 0;font-size:14px;border:1px solid}
+.tip{background:var(--basil-soft);border-color:#bfe6cf}
+.note{background:var(--brand-soft);border-color:#c4d7ff}
+.warn{background:var(--amber-soft);border-color:#f4dca0}
+.danger{background:var(--red-soft);border-color:#f3b9bc}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:3px 11px;background:var(--brand-soft);color:var(--brand-strong);border:1px solid #c4d7ff}
+.pill.g{background:var(--basil-soft);color:#0f7a54;border-color:#bfe6cf}
+.ui{background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:1px 8px;font-size:13px;font-weight:600;white-space:nowrap}
+code{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px}
+.stage{display:flex;gap:16px;align-items:flex-start;margin:0}
+.stage .n{flex:none;width:44px;height:44px;border-radius:12px;background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;display:grid;place-items:center;font-weight:800;font-family:'Bricolage Grotesque',sans-serif;font-size:18px;box-shadow:0 8px 18px -8px var(--brand)}
+.stage .body{flex:1;min-width:0}
+.stage .body h3{margin:4px 0 6px;font-size:18px;font-family:'Bricolage Grotesque',sans-serif}
+.steps{margin:8px 0 0;padding-left:20px}
+.steps li{margin:5px 0}
+.arrive{font-size:13.5px;color:var(--ink-2);background:var(--panel-2);border-left:3px solid var(--brand);border-radius:0 10px 10px 0;padding:8px 12px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--panel-2);font-weight:700}
+.flowbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;font-size:12.5px}
+.flowbar .s{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600}
+.flowbar .ar{color:var(--ink-3)}
+.foot{color:var(--ink-3);font-size:12.5px;margin-top:30px;text-align:center}
+@media print{ body{background:#fff} .hero{box-shadow:none} .card{box-shadow:none;break-inside:avoid} .stage{break-inside:avoid} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="brand"><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22512%22%20height%3D%22512%22%20viewBox%3D%220%200%20512%20512%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%235b8dff%22%2F%3E%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%232f6bff%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%231a4fd6%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%22512%22%20height%3D%22512%22%20rx%3D%22112%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%2226%22%20stroke-linecap%3D%22round%22%20opacity%3D%220.92%22%3E%3Cpath%20d%3D%22M126%20196%20A150%20150%200%200%201%20360%20150%22%2F%3E%3Cpath%20d%3D%22M386%20316%20A150%20150%200%200%201%20152%20362%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M360%20150%20l-6%20-44%20l46%2024%20z%22%20fill%3D%22%23ffffff%22%2F%3E%3Cpath%20d%3D%22M152%20362%20l6%2044%20l-46%20-24%20z%22%20fill%3D%22%23ffffff%22%2F%3E%3Ctext%20x%3D%22256%22%20y%3D%22322%22%20text-anchor%3D%22middle%22%20font-family%3D%22Bricolage%20Grotesque%2CInter%2Csans-serif%22%20font-weight%3D%22800%22%20font-size%3D%22200%22%20fill%3D%22%23ffffff%22%20letter-spacing%3D%22-6%22%3EKS%3C%2Ftext%3E%3C%2Fsvg%3E" alt="Kitchen Sync"><div class="nm">Kitchen&nbsp;Sync</div></div>
+    <h1>Manual de Configuração Fiscal — NFC-e</h1>
+    <p>Como deixar um novo restaurante emitindo o cupom fiscal (NFC-e) pelo Kitchen Sync. Da documentação na SEFAZ até a primeira nota autorizada — passo a passo, sem enrolação.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Como a emissão funciona</h2>
+    <p class="lead">O <b>cupom fiscal</b> de bar e restaurante é a <b>NFC-e</b> (Nota Fiscal de Consumidor eletrônica, modelo 65). Quando o caixa fecha uma venda e clica em <span class="ui">Emitir</span>, acontece o seguinte, em segundos:</p>
+    <div class="flowbar">
+      <span class="s">Kitchen Sync</span><span class="ar">→</span>
+      <span class="s">Focus NFe (provedor)</span><span class="ar">→</span>
+      <span class="s">SEFAZ do estado</span><span class="ar">→</span>
+      <span class="s">Cupom autorizado + QR</span>
+    </div>
+    <p class="lead">A <b>Focus NFe</b> assina a nota com o certificado digital do restaurante e transmite para a SEFAZ; o Kitchen Sync recebe de volta a <b>chave</b>, o <b>número</b> e o <b>cupom (DANFCE)</b> para imprimir. O certificado e o CSC ficam guardados <b>na Focus</b> — nunca no aplicativo.</p>
+    <div class="callout note"><b>Dois ambientes.</b> Sempre configure primeiro em <b>Homologação</b> (notas de teste, sem valor fiscal) para validar tudo. Só depois mude para <b>Produção</b> (notas reais, com valor fiscal).</div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">O que é preciso ter antes (checklist)</h2>
+    <table>
+      <tr><th>Item</th><th>O que é / onde consegue</th></tr>
+      <tr><td><b>Certificado digital A1</b></td><td>Arquivo <code>.pfx</code> + senha, do <b>CNPJ do restaurante</b>. Compra-se em qualquer Autoridade Certificadora (Serasa, Certisign, Valid…). Validade de 1 ano.</td></tr>
+      <tr><td><b>Credenciamento NFC-e</b></td><td>Autorização para emitir NFC-e (modelo 65), feita no portal da <b>SEFAZ do estado</b> do restaurante, com a Inscrição Estadual.</td></tr>
+      <tr><td><b>CSC</b> (Código de Segurança do Contribuinte)</td><td>Gerado na SEFAZ. Tem duas partes: o <b>Id do CSC</b> (número curto) e o <b>Código do CSC</b> (sequência longa). É o que forma o QR do cupom.</td></tr>
+      <tr><td><b>Conta na Focus NFe</b></td><td>Em <b>focusnfe.com.br</b>. É onde o certificado é guardado e de onde saem os <b>tokens</b> de homologação e produção.</td></tr>
+      <tr><td><b>Contador</b></td><td>Define os <b>códigos fiscais</b> de cada produto (NCM, CFOP, CST/CSOSN, IBS/CBS) e o <b>regime tributário</b> do restaurante.</td></tr>
+    </table>
+    <div class="callout tip"><b>Dica:</b> os passos 1 e 2 são <b>burocráticos</b> (SEFAZ e certificado). O ideal é o <b>contador do cliente</b> cuidar deles — ele já tem o acesso à Inscrição Estadual. Os passos 3 em diante são no próprio Kitchen Sync.</div>
+  </div>
+
+  <h2>Passo a passo</h2>
+
+  <div class="card"><div class="stage">
+    <div class="n">1</div>
+    <div class="body">
+      <h3>Credenciar a NFC-e e gerar o CSC na SEFAZ</h3>
+      <div class="pill">Contador / responsável fiscal</div>
+      <ol class="steps">
+        <li>Acessar a <b>área logada da SEFAZ do estado</b> (ex.: no Maranhão, <span class="ui">SEFAZ.NET → Sistemas → NFCE</span>), com Inscrição Estadual + certificado.</li>
+        <li>Fazer o <b>Credenciamento NFC-e</b> (modelo 65) da empresa.</li>
+        <li>Em <b>Manutenção de CSC</b> (ou "Token"), <b>gerar o CSC</b> e anotar os dois valores: <b>Id do CSC</b> e <b>Código do CSC</b>.</li>
+      </ol>
+      <div class="arrive">Guarde o <b>Id</b> e o <b>Código</b> do CSC — eles vão para a Focus no próximo passo.</div>
+    </div>
+  </div></div>
+
+  <div class="card"><div class="stage">
+    <div class="n">2</div>
+    <div class="body">
+      <h3>Configurar a empresa na Focus NFe</h3>
+      <div class="pill">No painel da Focus</div>
+      <ol class="steps">
+        <li>Em <b>Empresas → Adicionar empresa</b>, cadastrar o CNPJ e <b>subir o certificado A1</b> (arquivo + senha).</li>
+        <li>Na aba <b>Documentos Fiscais</b>, <b>ligar a NFCe</b>. Preencher, nos blocos <b>Homologação</b> e <b>Produção</b>: a <b>Série</b> e os dois campos do CSC (veja o quadro abaixo). Salvar.</li>
+        <li>Na aba <b>Tokens</b>, copiar o <b>token de Homologação</b> e o <b>token de Produção</b> (são diferentes — não use o token mestre).</li>
+      </ol>
+      <div class="callout warn">
+        <b>⚠️ O erro que quase todo mundo comete — ID Token × CSC.</b> O CSC tem <b>dois valores</b>, e eles não podem ser trocados:
+        <table style="margin:10px 0 2px">
+          <tr><th>Campo na Focus</th><th>O que colar</th><th>Como é</th></tr>
+          <tr><td><b>ID Token</b></td><td>o <b>Id do CSC</b></td><td>número curto (ex.: <code>1</code> ou <code>000001</code>)</td></tr>
+          <tr><td><b>CSC</b></td><td>o <b>Código do CSC</b></td><td>sequência longa (até 36 caracteres)</td></tr>
+        </table>
+        Na tela da SEFAZ, o <b>Id do CSC</b> costuma vir na coluna <span class="ui">CLD Token</span> (ou "Id"), e o <b>Código</b> na coluna <span class="ui">Token</span>. Trocar os dois (ou pôr o Código no campo ID Token) é a causa nº 1 de nota rejeitada por CSC.
+      </div>
+      <div class="arrive">Com os <b>dois tokens</b> em mãos, o resto é dentro do Kitchen Sync.</div>
+    </div>
+  </div></div>
+
+  <div class="card"><div class="stage">
+    <div class="n">3</div>
+    <div class="body">
+      <h3>Preencher o Fiscal no Kitchen Sync</h3>
+      <div class="pill">No app, como administrador</div>
+      <p class="lead" style="margin:6px 0">Menu <span class="ui">Configurações → Fiscal (NFC-e)</span>:</p>
+      <ul class="steps">
+        <li><b>Razão social, CNPJ, Inscrição Estadual</b> do restaurante.</li>
+        <li><b>Regime tributário:</b> <span class="pill g">Simples Nacional</span> para a maioria dos restaurantes; <b>Lucro Presumido/Real</b> se for o caso.</li>
+        <li><b>Endereço</b> completo + o <b>Código IBGE</b> do município (ex.: São Luís = <code>2111300</code>).</li>
+        <li><b>Ambiente:</b> comece em <b>Homologação</b>.</li>
+        <li><b>Token Focus — Homologação</b> e <b>Token Focus — Produção:</b> cole os dois tokens da Focus.</li>
+        <li><b>Salvar alterações.</b></li>
+      </ul>
+      <div class="callout note">O certificado A1 e o CSC <b>não</b> são colados aqui — eles ficam só na Focus. O app guarda apenas os tokens, na área protegida do restaurante.</div>
+    </div>
+  </div></div>
+
+  <div class="card"><div class="stage">
+    <div class="n">4</div>
+    <div class="body">
+      <h3>Preencher os dados fiscais dos produtos</h3>
+      <div class="pill">Com o contador</div>
+      <p class="lead" style="margin:6px 0">Em <span class="ui">Produtos</span>, no bloco <b>Dados fiscais</b> de cada item:</p>
+      <table>
+        <tr><th>Campo</th><th>O que é</th></tr>
+        <tr><td><b>NCM</b></td><td>Código do produto na tabela nacional (pizza, refrigerante etc. têm NCMs diferentes).</td></tr>
+        <tr><td><b>CFOP</b></td><td>Natureza da operação (ex.: <code>5102</code> venda dentro do estado).</td></tr>
+        <tr><td><b>CEST</b></td><td>Só para itens com Substituição Tributária — 7 dígitos. Se não houver, <b>deixe em branco</b>.</td></tr>
+        <tr><td><b>Origem</b></td><td><code>0</code> = Nacional, na maioria dos casos.</td></tr>
+        <tr><td><b>CSOSN / CST</b></td><td><b>Simples Nacional:</b> CSOSN (ex.: <code>102</code>). <b>Regime Normal:</b> CST (ex.: <code>00</code>) + alíquota de ICMS.</td></tr>
+      </table>
+      <div class="callout warn"><b>Importante:</b> esses códigos definem o imposto da nota. Quem preenche é o <b>contador</b> — valores errados geram rejeição ou problema fiscal.</div>
+    </div>
+  </div></div>
+
+  <div class="card"><div class="stage">
+    <div class="n">5</div>
+    <div class="body">
+      <h3>Testar em homologação</h3>
+      <div class="pill">No app</div>
+      <ol class="steps">
+        <li>Faça uma venda de teste com um produto que tenha os dados fiscais preenchidos.</li>
+        <li>Em <span class="ui">Vendas</span>, coluna <b>Fiscal</b>, clique em <b>Emitir</b> (o CPF é opcional).</li>
+        <li>Se aparecer <span class="pill g">NFC-e nº X</span>, deu certo — clique em <b>Cupom</b> para ver a DANFCE com o QR.</li>
+        <li>Se aparecer <b>rejeitada</b>, passe o mouse para ver o motivo e corrija (veja a tabela de erros no fim).</li>
+      </ol>
+      <div class="arrive">As notas de homologação <b>não têm valor fiscal</b> — é o ambiente certo para calibrar tudo com o contador.</div>
+    </div>
+  </div></div>
+
+  <div class="card"><div class="stage">
+    <div class="n">6</div>
+    <div class="body">
+      <h3>Virar para produção</h3>
+      <div class="pill">Decisão fiscal — com o contador</div>
+      <ol class="steps">
+        <li>Confirme com o contador que <b>NCM, CFOP, CST/CSOSN e regime</b> estão corretos.</li>
+        <li>Em <span class="ui">Configurações → Fiscal</span>, mude o <b>Ambiente</b> para <b>Produção</b> (o token de produção já deve estar colado). <b>Salvar.</b></li>
+        <li>Emita uma nota real de <b>valor baixo</b> para validar, e confira o cupom.</li>
+      </ol>
+      <div class="callout danger"><b>A partir daqui as notas são reais e definitivas.</b> Só vire a chave quando o contador tiver validado os códigos fiscais e o CNPJ emitente for o do restaurante.</div>
+    </div>
+  </div></div>
+
+  <div class="card">
+    <h2 style="margin-top:0">No dia a dia</h2>
+    <ul class="steps">
+      <li><b>Emitir:</b> tela <span class="ui">Vendas</span> → coluna <b>Fiscal</b> → <b>Emitir</b>. Vale para vendas de balcão, mesa e delivery.</li>
+      <li><b>Acompanhar:</b> <span class="pill">emitindo…</span> = aguarde e clique em <b>Atualizar</b>. <span class="pill g">NFC-e nº X</span> = autorizada.</li>
+      <li><b>Imprimir o cupom:</b> botão <b>Cupom</b> abre a DANFCE com o QR Code para o cliente.</li>
+      <li><b>CPF na nota:</b> opcional — informe quando o cliente pedir.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Erros comuns e como resolver</h2>
+    <table>
+      <tr><th>Mensagem</th><th>Causa e solução</th></tr>
+      <tr><td>Token da Focus não configurado</td><td>Cole o token do ambiente certo em <span class="ui">Configurações → Fiscal</span> e clique em <b>Salvar</b>.</td></tr>
+      <tr><td>CEST: valor não aceito pelo padrão [0-9]{7}</td><td>O CEST tem que ter 7 dígitos ou ficar <b>em branco</b>. Não coloque o CFOP nesse campo.</td></tr>
+      <tr><td>Informado CSOSN para emissor que não é do Simples (CRT diferente de 1 ou 4)</td><td>O CNPJ é <b>Regime Normal</b>: use <b>CST</b> (ex.: 00) + alíquota de ICMS, e Regime = Lucro Presumido/Real. (Se for Simples, use CSOSN.)</td></tr>
+      <tr><td>IBS/CBS não informado</td><td>É da <b>Reforma Tributária</b> — o Kitchen Sync já envia esse grupo automaticamente. Se aparecer, confirme que está na versão atual do app.</td></tr>
+      <tr><td>Faltam dados fiscais no produto X</td><td>Preencha <b>NCM, CFOP e CSOSN/CST</b> do produto em <span class="ui">Produtos → Dados fiscais</span>.</td></tr>
+      <tr><td>Nota não encontrada na Focus</td><td>A emissão não chegou a ser criada — veja a mensagem anterior (geralmente token ou um dado fiscal). Corrija e emita de novo.</td></tr>
+    </table>
+    <div class="callout tip"><b>Regra de ouro:</b> a mensagem de rejeição quase sempre aponta <b>um campo só</b>. Leia o texto, ajuste esse campo (no produto ou no Fiscal) e emita de novo.</div>
+  </div>
+
+  <div class="callout note" style="font-size:13.5px">
+    <b>Resumo do que é de quem:</b> o <b>contador</b> cuida de certificado, credenciamento, CSC e dos códigos fiscais; o <b>restaurante</b> cria a conta na Focus e cola os tokens no app; o <b>Kitchen Sync</b> faz o resto — monta a nota, fala com a Focus/SEFAZ e entrega o cupom.
+  </div>
+
+  <div class="foot">Kitchen Sync — Manual de Configuração Fiscal (NFC-e). Documento de apoio; os procedimentos da SEFAZ e da Focus NFe podem mudar. Em caso de dúvida fiscal, consulte o contador.</div>
+
+</div>
+</body>
+</html>

@@ -2409,6 +2409,12 @@ async function consultarNFCe(id){
     else if(data.status==="erro") toast("Rejeitada: "+(data.mensagem||""),"err");
   }catch(e){ toast("Não foi possível consultar o status.","err"); }
 }
+function abrirManualFiscal(){
+  openModal("Manual de configuração fiscal (NFC-e)",`
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">Passo a passo para deixar a emissão do cupom fiscal funcionando. <a href="manual-fiscal.html" target="_blank" style="color:var(--brand);font-weight:600">↗ abrir em nova aba</a></div>
+    <iframe src="manual-fiscal.html" title="Manual Fiscal" loading="lazy" style="width:100%;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:12px;display:block;background:#fff"></iframe>`,
+    null,"wide",true);
+}
 
 /* ============================================================
    DESPESAS
@@ -3501,7 +3507,7 @@ function vConfig(){
       <div class="field"><label>Imposto sobre vendas (%) — usado no DRE</label><input class="input" id="cf-imposto" type="number" step="0.1" value="${c.impostoPercent}"></div>
       <button class="btn primary" data-act="save-config">Salvar alterações</button>
     </div></div>
-    ${(()=>{const fx=c.fiscal||{};return `<div class="card"><div class="card-head"><h3>🧾 Fiscal — NFC-e (cupom fiscal)</h3></div><div class="card-body">
+    ${(()=>{const fx=c.fiscal||{};return `<div class="card"><div class="card-head"><h3>🧾 Fiscal — NFC-e (cupom fiscal)</h3><div class="spacer"></div><button class="btn sm" data-act="manual-fiscal">📖 Manual de configuração</button></div><div class="card-body">
       <div class="muted" style="font-size:12px;margin-bottom:10px">Dados para a emissão da nota do consumidor (modelo 65). Preencha com o seu contador. Comece em <b>Homologação</b> (notas de teste, sem valor) e só mude para <b>Produção</b> após validar.</div>
       <div class="form-grid">
         <div class="field full"><label>Razão social</label><input class="input" id="fx-razao" value="${esc(fx.razao||"")}"></div>
@@ -3756,6 +3762,7 @@ document.addEventListener("click",e=>{
     case "emitir-nfce": if(can("vendas"))formEmitirNFCe(id); break;
     case "nfce-status": consultarNFCe(id); break;
     case "nfce-ver": { const v=byId(db.vendas,id); if(v&&v.nfce&&v.nfce.url_danfce) window.open(v.nfce.url_danfce,"_blank"); break; }
+    case "manual-fiscal": abrirManualFiscal(); break;
     case "qr-print": qrImprimirTodos(); break;
     case "qr-um": qrUmaMesa(); break;
     case "qr-copy": { const lk=a.getAttribute("data-link")||""; try{ navigator.clipboard.writeText(lk); toast("Link copiado.","ok"); }catch(_){ const i=$("#qr-link-geral"); if(i){ i.select(); try{document.execCommand("copy");toast("Link copiado.","ok");}catch(e){} } } break; }
