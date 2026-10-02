@@ -1016,6 +1016,7 @@ function doLogin(){
    ============================================================ */
 function vDashboard(){
   const mode=state.period.dash;
+  const temVendas = moduloAtivo("vendas");
   const vendasP = db.vendas.filter(v=>inPeriod(v.data,mode));
   const receita = vendasP.reduce((s,v)=>s+vendaTotal(v),0);
   const cmv = vendasP.reduce((s,v)=>s+vendaCMV(v),0);
@@ -1052,14 +1053,17 @@ function vDashboard(){
   </div>
 
   <div class="grid kpis" style="margin-bottom:16px">
-    ${verFin()?`
+    ${temVendas?(verFin()?`
     <div class="kpi"><div class="k-lab">🧾 Vendas ${label}</div><div class="k-val">${BRL(receita)}</div><div class="k-sub">${vendasP.length} pedido(s) · ${NUM(nItens)} itens</div></div>
     <div class="kpi good"><div class="k-lab">💰 Lucro bruto</div><div class="k-val">${BRL(lucroBruto)}</div><div class="k-sub">CMV: ${BRL(cmv)} (${receita>0?NUM(cmv/receita*100):0}%)</div></div>
+    `:`
+    <div class="kpi"><div class="k-lab">🧾 Pedidos ${label}</div><div class="k-val">${vendasP.length}</div><div class="k-sub">${NUM(nItens)} itens vendidos</div></div>
+    `):""}
+    ${verFin()?`
     <div class="kpi"><div class="k-lab">🛒 Compras ${label}</div><div class="k-val">${BRL(comprasP)}</div><div class="k-sub">Insumos adquiridos</div></div>
     <div class="kpi ${baixo.length?"bad":""}"><div class="k-lab">📦 Estoque baixo</div><div class="k-val">${baixo.length}</div><div class="k-sub">Valor em estoque: ${BRL(valorEstoque)}</div></div>
     <div class="kpi ${valorVencidoMes>0?"bad":""}"><div class="k-lab">⚠️ Vencido no mês</div><div class="k-val">${BRL(valorVencidoMes)}</div><div class="k-sub">${vencProx} item(ns) vencendo em breve</div></div>
     `:`
-    <div class="kpi"><div class="k-lab">🧾 Pedidos ${label}</div><div class="k-val">${vendasP.length}</div><div class="k-sub">${NUM(nItens)} itens vendidos</div></div>
     <div class="kpi ${baixo.length?"bad":""}"><div class="k-lab">📦 Estoque baixo</div><div class="k-val">${baixo.length}</div><div class="k-sub">item(ns) abaixo do mínimo</div></div>
     <div class="kpi ${vencProx>0?"bad":""}"><div class="k-lab">⏳ Vencendo em breve</div><div class="k-val">${vencProx}</div><div class="k-sub">próximos ${(db.config&&db.config.validadeAlerta)||7} dias</div></div>
     <div class="kpi ${vencidosMes>0?"bad":""}"><div class="k-lab">⚠️ Vencidos no mês</div><div class="k-val">${vencidosMes}</div><div class="k-sub">itens com baixa por validade</div></div>
@@ -1067,7 +1071,7 @@ function vDashboard(){
   </div>
 
   <div class="two-col">
-    <div class="card">
+    ${temVendas?`<div class="card">
       <div class="card-head"><h3>Mais vendidos ${label}</h3></div>
       <div class="card-body">
         ${topVend.length? `<div class="bars">${topVend.map(x=>`
@@ -1076,7 +1080,7 @@ function vDashboard(){
             <div class="bar-val">${NUM(x.qtd)} un</div></div>`).join("")}</div>`
         : emptyBox("🍽️","Sem vendas no período","Registre uma venda para ver o ranking.") }
       </div>
-    </div>
+    </div>`:""}
     <div class="card">
       <div class="card-head"><h3>Alertas de estoque</h3><div class="spacer"></div><span class="pill ${baixo.length?"red":"green"}">${baixo.length} item(s)</span></div>
       <div class="card-body flush">
