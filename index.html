@@ -2209,6 +2209,8 @@ function formProduto(p){
       </select></div>
       <div class="field"><label>CSOSN (Simples) ou CST (normal)</label><input class="input" id="p-csosn" value="${esc(fs.csosn||"")}" placeholder="Simples: 102 · ST: 500"></div>
       <div class="field"><label>Alíquota ICMS (%) — se aplicável</label><input class="input" id="p-icms" type="number" step="0.01" value="${fs.icms!=null?fs.icms:""}" placeholder="regime normal"></div>
+      <div class="field"><label>IBS/CBS — situação (CST)</label><input class="input" id="p-ibscst" value="${esc(fs.ibsCbsCst||"")}" placeholder="vazio = usa o padrão"></div>
+      <div class="field"><label>IBS/CBS — classificação (cClassTrib)</label><input class="input" id="p-ibsclass" value="${esc(fs.ibsCbsClass||"")}" placeholder="vazio = usa o padrão"></div>
     </div>`;})()}`,
     ()=>{ const nome=$("#p-nome").value.trim(),preco=num($("#p-preco").value);
       if(!nome){toast("Informe o nome.","err");return false;}
@@ -2223,7 +2225,7 @@ function formProduto(p){
         margem:($("#p-margem").value===""?null:num($("#p-margem").value)),precoModo:$("#p-modo").value,
         imposto:num($("#p-imposto").value),cartao:num($("#p-cartao").value),
         ifCom:num($("#p-ifcom").value),ifTx:num($("#p-iftx").value),ifAnt:num($("#p-ifant").value),
-        fiscal:{ncm:$("#p-ncm").value.trim(),cest:$("#p-cest").value.trim(),cfop:$("#p-cfop").value.trim(),unidade:($("#p-untrib").value.trim()||"UN"),origem:$("#p-origem").value,csosn:$("#p-csosn").value.trim(),icms:($("#p-icms").value===""?null:num($("#p-icms").value))}};
+        fiscal:{ncm:$("#p-ncm").value.trim(),cest:$("#p-cest").value.trim(),cfop:$("#p-cfop").value.trim(),unidade:($("#p-untrib").value.trim()||"UN"),origem:$("#p-origem").value,csosn:$("#p-csosn").value.trim(),icms:($("#p-icms").value===""?null:num($("#p-icms").value)),ibsCbsCst:$("#p-ibscst").value.trim(),ibsCbsClass:$("#p-ibsclass").value.trim()}};
       if(p.id){Object.assign(byId(db.produtos,p.id),o);}else{o.id=uid();db.produtos.push(o);}
       save(); toast("Produto salvo.","ok"); return true; },"wide");
   renderDraftFicha(); updatePrecPreview();
@@ -3530,7 +3532,16 @@ function vConfig(){
         <div class="field full"><label>Token Focus NFe — Homologação</label><input class="input" id="fx-tokenh" type="password" value="${esc(fx.tokenHomolog||"")}" placeholder="token de teste da Focus"></div>
         <div class="field full"><label>Token Focus NFe — Produção</label><input class="input" id="fx-tokenp" type="password" value="${esc(fx.tokenProd||"")}" placeholder="token de produção da Focus"></div>
       </div>
-      <button class="btn primary" data-act="save-config" style="margin-top:4px">Salvar alterações</button>
+      <div style="border-top:1px solid var(--line);margin:12px 0 8px;padding-top:10px"><b style="font-size:13.5px">Reforma Tributária — IBS/CBS (padrão)</b>
+        <div class="muted" style="font-size:12px;margin-top:2px">Valores de 2026 (fase de transição — ainda não cobrados de verdade). O contador ajusta quando a reforma avançar. Pode sobrescrever por produto.</div></div>
+      <div class="form-grid">
+        <div class="field"><label>CBS — alíquota (%)</label><input class="input" id="fx-cbs" type="number" step="0.01" value="${fx.cbsAliquota!=null?fx.cbsAliquota:0.9}"></div>
+        <div class="field"><label>IBS Estadual — alíquota (%)</label><input class="input" id="fx-ibsuf" type="number" step="0.01" value="${fx.ibsUfAliquota!=null?fx.ibsUfAliquota:0.1}"></div>
+        <div class="field"><label>IBS Municipal — alíquota (%)</label><input class="input" id="fx-ibsmun" type="number" step="0.01" value="${fx.ibsMunAliquota!=null?fx.ibsMunAliquota:0}"></div>
+        <div class="field"><label>Situação tributária IBS/CBS (CST)</label><input class="input" id="fx-ibscst" value="${esc(fx.ibsCbsCst||"000")}" placeholder="000"></div>
+        <div class="field"><label>Classificação tributária (cClassTrib)</label><input class="input" id="fx-ibsclass" value="${esc(fx.ibsCbsClass||"000001")}" placeholder="000001"></div>
+      </div>
+      <button class="btn primary" data-act="save-config" style="margin-top:8px">Salvar alterações</button>
       <div class="muted" style="font-size:12px;margin-top:8px">O certificado digital <b>A1</b> e o <b>CSC</b> ficam no painel da <b>Focus NFe</b> — nunca aqui no app. Os tokens ficam guardados na área protegida do seu restaurante (só os seus administradores veem) e são usados pelo servidor para emitir a nota.</div>
     </div></div>`;})()}
     <div class="card"><div class="card-head"><h3>Alertas &amp; limites</h3></div><div class="card-body">
@@ -3819,7 +3830,11 @@ document.addEventListener("click",e=>{
         F.uf=(g("#fx-uf")||"").toUpperCase(); F.logradouro=g("#fx-logradouro"); F.numero=g("#fx-numero"); F.bairro=g("#fx-bairro");
         F.municipio=g("#fx-municipio"); F.ibge=g("#fx-ibge"); F.cep=g("#fx-cep");
         F.serie=num($("#fx-serie").value); F.proxNumero=num($("#fx-numnota").value);
-        F.provedor="focus"; F.tokenHomolog=g("#fx-tokenh"); F.tokenProd=g("#fx-tokenp"); } }
+        F.provedor="focus"; F.tokenHomolog=g("#fx-tokenh"); F.tokenProd=g("#fx-tokenp");
+        { const e=$("#fx-cbs"); if(e) F.cbsAliquota=num(e.value); }
+        { const e=$("#fx-ibsuf"); if(e) F.ibsUfAliquota=num(e.value); }
+        { const e=$("#fx-ibsmun"); if(e) F.ibsMunAliquota=num(e.value); }
+        F.ibsCbsCst=g("#fx-ibscst")||"000"; F.ibsCbsClass=g("#fx-ibsclass")||"000001"; } }
       save(); toast("Configurações salvas.","ok"); render(); break;
     case "export-all": download("backup-fornoecaixa-"+todayISO()+".json",JSON.stringify(db,null,2)); toast("Backup gerado.","ok"); break;
     case "reset-demo": if(confirm("Isto substitui TODOS os dados pelos dados de exemplo. Continuar?")){ db=seed(); save(); state.user=db.usuarios[0]; toast("Dados de exemplo recarregados.","ok"); render(); } break;
