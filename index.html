@@ -477,7 +477,20 @@ const NAV = [
  {id:"curso",      g:"Ajuda",     label:"Treinamento",        ic:"🎓", roles:["admin","gerencia","operacao","estoque","compras","financeiro"]},
  {id:"manual",     g:"Ajuda",     label:"Manual de Compras",  ic:"📘", roles:["admin","gerencia","operacao","estoque","compras","financeiro"]},
 ];
-const can = view => { const n=NAV.find(x=>x.id===view); return n && state.user && n.roles.includes(state.user.nivel); };
+/* ===== Módulos do SaaS (controlados pelo operador) — definem quais telas o cliente contratou ===== */
+const MODULOS = {
+  cozinha:    {nome:"Cozinha & Suprimentos", ic:"🍳", navs:["compras","cotacoes","fornecedores","insumos","movimentacao","bar","limpeza","descartaveis","perdas","fechamento","fechamento-bar","producao"]},
+  vendas:     {nome:"Vendas & PDV",          ic:"🧾", navs:["vendas","comandas","kds","caixa","delivery","cardapio-qr"]},
+  financeiro: {nome:"Financeiro",            ic:"📈", navs:["despesas","dre","analises","kpis"]},
+  fiscal:     {nome:"Fiscal (NFC-e)",        ic:"🧾", navs:[]},
+};
+/* E-mails do(s) operador(es) do SaaS que enxergam o Painel SaaS. Ajuste conforme necessário. */
+const SUPER_ADMINS = ["lcsmbm@gmail.com"];
+function navModulo(id){ for(const k in MODULOS){ if(MODULOS[k].navs.includes(id)) return k; } return "core"; }
+function tenantModulos(){ if(typeof SB!=="undefined" && SB.on) return Array.isArray(SB.modulos)?SB.modulos:null; return null; }
+function moduloAtivo(key){ if(key==="core") return true; const m=tenantModulos(); if(!m||!m.length) return true; return m.includes(key); }
+function isSuperAdmin(){ try{ return !!(typeof SB!=="undefined" && SB.on && SB.email && SUPER_ADMINS.map(e=>e.toLowerCase()).includes(String(SB.email).toLowerCase())); }catch(e){ return false; } }
+const can = view => { if(view==="superadmin") return isSuperAdmin(); const n=NAV.find(x=>x.id===view); return !!(n && state.user && n.roles.includes(state.user.nivel) && moduloAtivo(navModulo(view))); };
 /* Quem pode ver faturamento, lucro e custos (financeiro). Demais funções operam sem ver valores de venda/lucro. */
 const verFin = () => !!(state.user && ["admin","gerencia","financeiro"].includes(state.user.nivel));
 
@@ -846,12 +859,13 @@ function sidebar(){
   const vencSetor={};
   (db.insumos||[]).forEach(i=>{ const s=setorDe(i); lotesDe(i).forEach(l=>{ const dd=diasAte(l.validade); if(dd!==null && dd<=diasAv){ vencSetor[s]=(vencSetor[s]||0)+1; } }); });
   const navSetor={movimentacao:"cozinha", bar:"bar", limpeza:"limpeza", descartaveis:"descartaveis"};
-  NAV.filter(n=>n.roles.includes(state.user.nivel)).forEach(n=>{
+  NAV.filter(n=>can(n.id)).forEach(n=>{
     if(n.g!==last){ groups.push(`<div class="grp">${n.g}</div>`); last=n.g; }
     const cnt=vencSetor[navSetor[n.id]]||0;
     const badge=cnt?`<span class="nav-badge" title="${cnt} item(ns) vencendo/vencido(s)">${cnt}</span>`:"";
     groups.push(`<a data-view="${n.id}" class="${state.view===n.id?"active":""}"><span class="ic">${n.ic}</span><span class="nav-lab">${n.label}</span>${badge}</a>`);
   });
+  if(isSuperAdmin()){ groups.push(`<div class="grp">SaaS</div>`); groups.push(`<a data-view="superadmin" class="${state.view==="superadmin"?"active":""}"><span class="ic">🛠️</span><span class="nav-lab">Painel SaaS</span></a>`); }
   return `
   <aside class="sidebar ${state.sidebarOpen?"open":""}">
     <div class="side-brand">
@@ -955,6 +969,7 @@ function viewHTML(){
     case "config": return vConfig();
     case "curso": return vCurso();
     case "manual": return vManual();
+    case "superadmin": return vSuperAdmin();
     default: return "";
   }
 }
@@ -2294,14 +2309,14 @@ function vVendas(){
     <button class="btn primary" data-act="nova-venda">＋ Nova venda</button>
   </div>
   <div class="card"><div class="card-body flush"><div class="tbl-wrap">
-    <table class="tbl"><thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th>${verFin()?`<th class="r">CMV</th><th class="r">Total</th>`:""}<th>Fiscal</th><th></th></tr></thead>
+    <table class="tbl"><thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th>${verFin()?`<th class="r">CMV</th><th class="r">Total</th>`:""}${moduloAtivo("fiscal")?`<th>Fiscal</th>`:""}<th></th></tr></thead>
     <tbody>${list.length?list.map(v=>`
       <tr><td class="mono">${fmtDate(v.data)}</td>
       <td>${(v.itens||[]).map(it=>{const p=byId(db.produtos,it.produtoId);return `${NUM(it.qtd)}× ${esc(p?p.nome:"—")}`;}).join(", ")}</td>
       <td>${esc(v.pagamento||"—")}</td>${verFin()?`<td class="r muted">${BRL(vendaCMV(v))}</td><td class="r strong">${BRL(vendaTotal(v))}</td>`:""}
-      <td><div class="hstack" style="gap:6px">${nfcePill(v)}${nfceAcoesHTML(v)}</div></td>
+      ${moduloAtivo("fiscal")?`<td><div class="hstack" style="gap:6px">${nfcePill(v)}${nfceAcoesHTML(v)}</div></td>`:""}
       <td><div class="rowacts">${["admin","gerencia"].includes(state.user.nivel)?`<button class="btn sm ghost danger" data-act="del-venda" data-id="${v.id}">Excluir</button>`:""}</div></td></tr>`).join("")
-      :`<tr><td colspan="${verFin()?7:5}">${emptyBox("🧾","Sem vendas no período","Clique em “Nova venda” para registrar.")}</td></tr>`}
+      :`<tr><td colspan="${(verFin()?6:4)+(moduloAtivo("fiscal")?1:0)}">${emptyBox("🧾","Sem vendas no período","Clique em “Nova venda” para registrar.")}</td></tr>`}
     </tbody></table>
   </div></div></div>`;
 }
@@ -2364,7 +2379,7 @@ function nfcePill(v){
   return `<span class="pill">${esc(s)}</span>`;
 }
 function nfceAcoesHTML(v){
-  if(!can("vendas")) return "";
+  if(!can("vendas")||!moduloAtivo("fiscal")) return "";
   const s=v.nfce&&v.nfce.status;
   if(s==="autorizada") return v.nfce.url_danfce?`<button class="btn sm ghost" data-act="nfce-ver" data-id="${v.id}">Cupom</button>`:"";
   if(s==="processando") return `<button class="btn sm ghost" data-act="nfce-status" data-id="${v.id}">Atualizar</button>`;
@@ -2416,6 +2431,48 @@ function abrirManualFiscal(){
     <div class="muted" style="font-size:12.5px;margin-bottom:8px">Passo a passo para deixar a emissão do cupom fiscal funcionando. <a href="manual-fiscal.html" target="_blank" style="color:var(--brand);font-weight:600">↗ abrir em nova aba</a></div>
     <iframe src="manual-fiscal.html" title="Manual Fiscal" loading="lazy" style="width:100%;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:12px;display:block;background:#fff"></iframe>`,
     null,"wide",true);
+}
+
+/* ===== Painel SaaS (super-admin do operador) — módulos contratados por restaurante ===== */
+function vSuperAdmin(){
+  if(!isSuperAdmin()) return `<div class="card"><div class="card-body">${emptyBox("🔒","Acesso restrito","Esta área é exclusiva do operador do SaaS.")}</div></div>`;
+  if(!sbOnline()) return `<div class="card"><div class="card-body">${emptyBox("🛠️","Painel SaaS","Disponível na versão online (Supabase).")}</div></div>`;
+  if(state.saasTenants===undefined){ if(!state.saasLoading){ state.saasLoading=true; carregarSaaS(); } return `<div class="card"><div class="card-body"><div class="muted" style="text-align:center;padding:26px">Carregando restaurantes…</div></div></div>`; }
+  const ts=state.saasTenants||[]; const modKeys=Object.keys(MODULOS);
+  return `
+  <div class="toolbar"><div><div class="page-title">Painel SaaS</div><div class="page-sub">Ligue/desligue os módulos de cada restaurante. Só você (operador) vê e altera isto.</div></div>
+    <div class="spacer"></div><button class="btn ghost" data-act="saas-reload">↻ Atualizar</button></div>
+  <div class="callout note" style="font-size:13px;background:var(--brand-soft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+    <b>Sem nenhum módulo marcado = acesso total</b> (todos os módulos). Marque para <b>restringir</b> ao que o cliente contratou. Painel, Produtos, Funcionários e Configurações são sempre inclusos.</div>
+  <div style="display:grid;gap:12px">
+    ${ts.length?ts.map(t=>{const m=Array.isArray(t.modulos)?t.modulos:[];return `
+      <div class="card"><div class="card-body">
+        <div class="hstack" style="justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="min-width:0"><div class="strong" style="font-size:15px">${esc(t.nome||"Restaurante")}</div><div class="muted" style="font-size:11.5px">${esc(String(t.id).slice(0,8))}… ${m.length?"":"· acesso total"}</div></div>
+          <button class="btn sm primary" data-act="saas-salvar" data-id="${esc(t.id)}">Salvar</button>
+        </div>
+        <div class="hstack" style="gap:16px;margin-top:10px;flex-wrap:wrap">
+          ${modKeys.map(k=>`<label class="inl"><input type="checkbox" class="sa-chk" data-tid="${esc(t.id)}" data-mod="${k}" ${m.includes(k)?"checked":""}> ${MODULOS[k].ic} ${esc(MODULOS[k].nome)}</label>`).join("")}
+        </div>
+      </div></div>`;}).join(""):`<div class="card"><div class="card-body"><div class="muted" style="text-align:center;padding:18px">Nenhum restaurante encontrado.</div></div></div>`}
+  </div>`;
+}
+async function carregarSaaS(){
+  try{ const {data,error}=await SB.client.functions.invoke("admin-modulos",{body:{action:"list"}});
+    if(error) throw error;
+    if(data&&data.error){ toast(data.error,"err"); state.saasTenants=[]; state.saasLoading=false; render(); return; }
+    state.saasTenants=Array.isArray(data.tenants)?data.tenants:[]; state.saasLoading=false; render();
+  }catch(e){ toast("Não foi possível carregar (confirme que você é operador).","err"); state.saasTenants=[]; state.saasLoading=false; render(); }
+}
+async function salvarSaaSModulos(tenantId){
+  const mods=[...document.querySelectorAll('.sa-chk[data-tid="'+tenantId+'"]')].filter(c=>c.checked).map(c=>c.getAttribute("data-mod"));
+  try{ const {data,error}=await SB.client.functions.invoke("admin-modulos",{body:{action:"set",tenant:tenantId,modulos:mods}});
+    if(error) throw error;
+    if(data&&data.error){ toast(data.error,"err"); return; }
+    const t=(state.saasTenants||[]).find(x=>x.id===tenantId); if(t) t.modulos=mods;
+    if(SB.tenantId===tenantId){ SB.modulos=mods.length?mods:null; }
+    toast("Módulos atualizados.","ok"); render();
+  }catch(e){ toast("Não foi possível salvar.","err"); }
 }
 
 /* ============================================================
@@ -3509,7 +3566,7 @@ function vConfig(){
       <div class="field"><label>Imposto sobre vendas (%) — usado no DRE</label><input class="input" id="cf-imposto" type="number" step="0.1" value="${c.impostoPercent}"></div>
       <button class="btn primary" data-act="save-config">Salvar alterações</button>
     </div></div>
-    ${(()=>{const fx=c.fiscal||{};return `<div class="card"><div class="card-head"><h3>🧾 Fiscal — NFC-e (cupom fiscal)</h3><div class="spacer"></div><button class="btn sm" data-act="manual-fiscal">📖 Manual de configuração</button></div><div class="card-body">
+    ${moduloAtivo("fiscal")?(()=>{const fx=c.fiscal||{};return `<div class="card"><div class="card-head"><h3>🧾 Fiscal — NFC-e (cupom fiscal)</h3><div class="spacer"></div><button class="btn sm" data-act="manual-fiscal">📖 Manual de configuração</button></div><div class="card-body">
       <div class="muted" style="font-size:12px;margin-bottom:10px">Dados para a emissão da nota do consumidor (modelo 65). Preencha com o seu contador. Comece em <b>Homologação</b> (notas de teste, sem valor) e só mude para <b>Produção</b> após validar.</div>
       <div class="form-grid">
         <div class="field full"><label>Razão social</label><input class="input" id="fx-razao" value="${esc(fx.razao||"")}"></div>
@@ -3543,7 +3600,7 @@ function vConfig(){
       </div>
       <button class="btn primary" data-act="save-config" style="margin-top:8px">Salvar alterações</button>
       <div class="muted" style="font-size:12px;margin-top:8px">O certificado digital <b>A1</b> e o <b>CSC</b> ficam no painel da <b>Focus NFe</b> — nunca aqui no app. Os tokens ficam guardados na área protegida do seu restaurante (só os seus administradores veem) e são usados pelo servidor para emitir a nota.</div>
-    </div></div>`;})()}
+    </div></div>`;})():""}
     <div class="card"><div class="card-head"><h3>Alertas &amp; limites</h3></div><div class="card-body">
       <div class="field"><label>Aviso de validade — dias de antecedência</label><input class="input" id="cf-validade" type="number" step="1" min="0" value="${c.validadeAlerta!=null?c.validadeAlerta:7}"></div>
       <div class="field"><label class="inl"><input type="checkbox" id="cf-baixavenc" ${c.baixaVencidoAuto!==false?"checked":""}> Baixa automática de itens vencidos (registra perda “Vencido”)</label></div>
@@ -3770,10 +3827,12 @@ document.addEventListener("click",e=>{
     case "entrega-entregue": if(can("delivery"))entregaEntregue(id); break;
     case "entrega-cancel": if(can("delivery"))entregaCancel(id); break;
     case "entrega-print": entregaPrint(id); break;
-    case "emitir-nfce": if(can("vendas"))formEmitirNFCe(id); break;
+    case "emitir-nfce": if(can("vendas")&&moduloAtivo("fiscal"))formEmitirNFCe(id); break;
     case "nfce-status": consultarNFCe(id); break;
     case "nfce-ver": { const v=byId(db.vendas,id); if(v&&v.nfce&&v.nfce.url_danfce) window.open(v.nfce.url_danfce,"_blank"); break; }
     case "manual-fiscal": abrirManualFiscal(); break;
+    case "saas-reload": state.saasTenants=undefined; state.saasLoading=false; render(); break;
+    case "saas-salvar": salvarSaaSModulos(id); break;
     case "qr-print": qrImprimirTodos(); break;
     case "qr-um": qrUmaMesa(); break;
     case "qr-copy": { const lk=a.getAttribute("data-link")||""; try{ navigator.clipboard.writeText(lk); toast("Link copiado.","ok"); }catch(_){ const i=$("#qr-link-geral"); if(i){ i.select(); try{document.execCommand("copy");toast("Link copiado.","ok");}catch(e){} } } break; }
@@ -4035,7 +4094,8 @@ const SB = {
   configured(){ return typeof SUPA_URL==="string" && SUPA_URL && typeof SUPA_KEY==="string" && SUPA_KEY && typeof supabase!=="undefined" && supabase.createClient; },
   async init(){ if(!this.configured()) return false; try{ this.client=supabase.createClient(SUPA_URL,SUPA_KEY); this.on=true; return true; }catch(e){ return false; } },
   async session(){ try{ const {data}=await this.client.auth.getSession(); return data.session||null; }catch(e){ return null; } },
-  async fetchTenant(){ try{ const {data,error}=await this.client.from("memberships").select("tenant_id").eq("user_id",this.uid).maybeSingle(); this.tenantId=(!error&&data)?data.tenant_id:null; }catch(e){ this.tenantId=null; } return this.tenantId; },
+  async fetchTenant(){ try{ const {data,error}=await this.client.from("memberships").select("tenant_id").eq("user_id",this.uid).maybeSingle(); this.tenantId=(!error&&data)?data.tenant_id:null; }catch(e){ this.tenantId=null; } await this.fetchModulos(); return this.tenantId; },
+  async fetchModulos(){ this.modulos=null; if(!this.tenantId) return; try{ const {data,error}=await this.client.from("tenants").select("modulos").eq("id",this.tenantId).maybeSingle(); if(!error&&data&&Array.isArray(data.modulos)) this.modulos=data.modulos; }catch(e){ this.modulos=null; } },
   async loadAll(){
     const results={}; let any=false;
     try{ const {data,error}=await this.client.from("app_state").select("k,data").eq("tenant_id",this.tenantId); if(!error&&data){ data.forEach(r=>{ results[r.k]=r.data; any=true; }); } }catch(e){}
