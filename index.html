@@ -2292,13 +2292,14 @@ function vVendas(){
     <button class="btn primary" data-act="nova-venda">＋ Nova venda</button>
   </div>
   <div class="card"><div class="card-body flush"><div class="tbl-wrap">
-    <table class="tbl"><thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th>${verFin()?`<th class="r">CMV</th><th class="r">Total</th>`:""}<th></th></tr></thead>
+    <table class="tbl"><thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th>${verFin()?`<th class="r">CMV</th><th class="r">Total</th>`:""}<th>Fiscal</th><th></th></tr></thead>
     <tbody>${list.length?list.map(v=>`
       <tr><td class="mono">${fmtDate(v.data)}</td>
       <td>${(v.itens||[]).map(it=>{const p=byId(db.produtos,it.produtoId);return `${NUM(it.qtd)}× ${esc(p?p.nome:"—")}`;}).join(", ")}</td>
       <td>${esc(v.pagamento||"—")}</td>${verFin()?`<td class="r muted">${BRL(vendaCMV(v))}</td><td class="r strong">${BRL(vendaTotal(v))}</td>`:""}
+      <td><div class="hstack" style="gap:6px">${nfcePill(v)}${nfceAcoesHTML(v)}</div></td>
       <td><div class="rowacts">${["admin","gerencia"].includes(state.user.nivel)?`<button class="btn sm ghost danger" data-act="del-venda" data-id="${v.id}">Excluir</button>`:""}</div></td></tr>`).join("")
-      :`<tr><td colspan="${verFin()?6:4}">${emptyBox("🧾","Sem vendas no período","Clique em “Nova venda” para registrar.")}</td></tr>`}
+      :`<tr><td colspan="${verFin()?7:5}">${emptyBox("🧾","Sem vendas no período","Clique em “Nova venda” para registrar.")}</td></tr>`}
     </tbody></table>
   </div></div></div>`;
 }
@@ -2347,6 +2348,66 @@ function renderDraftVenda(){
 function readDraftVenda(){
   const rows=document.querySelectorAll("#v-itens tbody tr");
   draftItens=[...rows].map(r=>({produtoId:r.querySelector(".dv-prod").value,qtd:num(r.querySelector(".dv-qtd").value),preco:num(r.querySelector(".dv-preco").value)}));
+}
+
+/* ===== NFC-e (cupom fiscal) via Focus NFe — emissão e status ===== */
+function sbOnline(){ return (typeof SB!=="undefined" && SB.on && SB.client); }
+function nfcePill(v){
+  const s=v.nfce&&v.nfce.status;
+  if(!s) return `<span class="pill gray">sem nota</span>`;
+  if(s==="autorizada") return `<span class="pill green">NFC-e${v.nfce.numero?(" nº "+esc(String(v.nfce.numero))):""}</span>`;
+  if(s==="processando") return `<span class="pill amber">emitindo…</span>`;
+  if(s==="cancelada") return `<span class="pill red">cancelada</span>`;
+  if(s==="erro") return `<span class="pill red" title="${esc(v.nfce.mensagem||"")}">rejeitada</span>`;
+  return `<span class="pill">${esc(s)}</span>`;
+}
+function nfceAcoesHTML(v){
+  if(!can("vendas")) return "";
+  const s=v.nfce&&v.nfce.status;
+  if(s==="autorizada") return v.nfce.url_danfce?`<button class="btn sm ghost" data-act="nfce-ver" data-id="${v.id}">Cupom</button>`:"";
+  if(s==="processando") return `<button class="btn sm ghost" data-act="nfce-status" data-id="${v.id}">Atualizar</button>`;
+  return `<button class="btn sm ghost" data-act="emitir-nfce" data-id="${v.id}">Emitir</button>`;
+}
+function formEmitirNFCe(id){
+  const v=byId(db.vendas,id); if(!v) return;
+  if(!sbOnline()){ toast("A emissão fiscal funciona na versão online (Supabase).","err"); return; }
+  const fisc=(db.config&&db.config.fiscal)||{};
+  const tk=(fisc.ambiente==="producao")?fisc.tokenProd:fisc.tokenHomolog;
+  if(!tk){ toast("Configure o token da Focus em Configurações → Fiscal.","err"); return; }
+  const amb=(fisc.ambiente==="producao")?"Produção":"Homologação (teste)";
+  openModal("Emitir NFC-e (cupom fiscal)",`
+    <div class="muted" style="font-size:13px;margin-bottom:12px">Venda de <b>${BRL(vendaTotal(v))}</b> · ${esc(v.canal||"Balcão")} · ambiente: <b>${amb}</b>. O CPF é opcional ("CPF na nota").</div>
+    <div class="field"><label>CPF do consumidor (opcional)</label><input class="input" id="nf-cpf" placeholder="somente números" inputmode="numeric"></div>
+    <div class="field"><label>Nome (opcional)</label><input class="input" id="nf-nome"></div>`,
+    ()=>{ const cpf=($("#nf-cpf").value||"").replace(/\D/g,""); const nome=$("#nf-nome").value.trim(); emitirNFCe(id,cpf,nome); return true; });
+  setTimeout(()=>{ const b=$("#modal .btn.primary"); if(b) b.textContent="Emitir"; },30);
+}
+async function emitirNFCe(id,cpf,nome){
+  const v=byId(db.vendas,id); if(!v) return;
+  if(!sbOnline()){ toast("Disponível na versão online.","err"); return; }
+  v.nfce={status:"processando",ref:v.id}; save(); render();
+  const pagamentos=(v.pagamentos&&v.pagamentos.length)?v.pagamentos:[{forma:v.pagamento||"Dinheiro",valor:vendaTotal(v)}];
+  try{
+    const {data,error}=await SB.client.functions.invoke("emitir-nfce",{body:{action:"emitir",ref:v.id,itens:(v.itens||[]),pagamentos,canal:v.canal||"",cpf:cpf||"",nome:nome||""}});
+    if(error) throw error;
+    if(data&&data.error){ v.nfce={status:"erro",mensagem:data.error,ref:v.id}; save(); render(); toast("Falha: "+data.error,"err"); return; }
+    v.nfce=data; save(); render();
+    if(data.status==="autorizada") toast("NFC-e autorizada!"+(data.numero?(" Nº "+data.numero):""),"ok");
+    else if(data.status==="erro") toast("Rejeitada: "+(data.mensagem||"veja os detalhes"),"err");
+    else toast("NFC-e em processamento — toque em “Atualizar” em instantes.","ok");
+  }catch(e){ v.nfce={status:"erro",mensagem:String((e&&e.message)||e),ref:v.id}; save(); render(); toast("Erro ao emitir. Confira Configurações → Fiscal.","err"); }
+}
+async function consultarNFCe(id){
+  const v=byId(db.vendas,id); if(!v) return;
+  if(!sbOnline()){ toast("Disponível na versão online.","err"); return; }
+  try{
+    const {data,error}=await SB.client.functions.invoke("emitir-nfce",{body:{action:"status",ref:v.id}});
+    if(error) throw error;
+    if(data&&data.error){ toast(data.error,"err"); return; }
+    v.nfce=data; save(); render();
+    if(data.status==="autorizada") toast("NFC-e autorizada!","ok");
+    else if(data.status==="erro") toast("Rejeitada: "+(data.mensagem||""),"err");
+  }catch(e){ toast("Não foi possível consultar o status.","err"); }
 }
 
 /* ============================================================
@@ -3692,6 +3753,9 @@ document.addEventListener("click",e=>{
     case "entrega-entregue": if(can("delivery"))entregaEntregue(id); break;
     case "entrega-cancel": if(can("delivery"))entregaCancel(id); break;
     case "entrega-print": entregaPrint(id); break;
+    case "emitir-nfce": if(can("vendas"))formEmitirNFCe(id); break;
+    case "nfce-status": consultarNFCe(id); break;
+    case "nfce-ver": { const v=byId(db.vendas,id); if(v&&v.nfce&&v.nfce.url_danfce) window.open(v.nfce.url_danfce,"_blank"); break; }
     case "qr-print": qrImprimirTodos(); break;
     case "qr-um": qrUmaMesa(); break;
     case "qr-copy": { const lk=a.getAttribute("data-link")||""; try{ navigator.clipboard.writeText(lk); toast("Link copiado.","ok"); }catch(_){ const i=$("#qr-link-geral"); if(i){ i.select(); try{document.execCommand("copy");toast("Link copiado.","ok");}catch(e){} } } break; }
