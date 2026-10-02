@@ -2195,7 +2195,21 @@ function formProduto(p){
     <button class="btn sm primary" data-act="usar-preco-sugerido" style="margin-top:8px">Usar preços sugeridos</button>
 
     <div class="field full" style="margin-top:10px"><label class="inl"><input type="checkbox" id="p-baixa" ${p.baixaVenda?"checked":""}> Dar baixa no estoque ao vender (itens de revenda, ex.: bebidas)</label>
-      <div class="muted" style="font-size:12px;margin-top:4px">Marque só para itens que <b>não passam pela cozinha</b>. A venda subtrai do estoque as quantidades da ficha técnica. Não marque pizzas.</div></div>`,
+      <div class="muted" style="font-size:12px;margin-top:4px">Marque só para itens que <b>não passam pela cozinha</b>. A venda subtrai do estoque as quantidades da ficha técnica. Não marque pizzas.</div></div>
+
+    <div class="field full" style="margin-top:10px;border-top:1px solid var(--line);padding-top:12px"><label style="font-weight:700;font-size:14px">🧾 Dados fiscais (NFC-e) — preencher com o contador</label>
+      <div class="muted" style="font-size:12px">Usados na emissão da nota. Seu contador define esses códigos conforme o produto e o regime tributário. Pode deixar em branco por enquanto.</div></div>
+    ${(()=>{const fs=p.fiscal||{};return `<div class="form-grid">
+      <div class="field"><label>NCM</label><input class="input" id="p-ncm" value="${esc(fs.ncm||"")}" placeholder="ex.: 21069090" inputmode="numeric"></div>
+      <div class="field"><label>CEST (se houver ST)</label><input class="input" id="p-cest" value="${esc(fs.cest||"")}" placeholder="opcional" inputmode="numeric"></div>
+      <div class="field"><label>CFOP</label><input class="input" id="p-cfop" value="${esc(fs.cfop||"5102")}" placeholder="ex.: 5102" inputmode="numeric"></div>
+      <div class="field"><label>Unidade tributável</label><input class="input" id="p-untrib" value="${esc(fs.unidade||"UN")}" placeholder="UN, KG, LT"></div>
+      <div class="field"><label>Origem da mercadoria</label><select class="input" id="p-origem">
+        ${[["0","0 - Nacional"],["1","1 - Estrangeira (importação direta)"],["2","2 - Estrangeira (mercado interno)"],["3","3 - Nacional >40% importação"],["4","4 - Nacional (processos básicos)"],["5","5 - Nacional <40% importação"],["6","6 - Estrangeira s/ similar nacional"],["7","7 - Estrangeira (mercado interno s/ similar)"],["8","8 - Nacional (conteúdo importado >70%)"]].map(([v,l])=>`<option value="${v}" ${String(fs.origem??"0")===v?"selected":""}>${l}</option>`).join("")}
+      </select></div>
+      <div class="field"><label>CSOSN (Simples) ou CST (normal)</label><input class="input" id="p-csosn" value="${esc(fs.csosn||"")}" placeholder="Simples: 102 · ST: 500"></div>
+      <div class="field"><label>Alíquota ICMS (%) — se aplicável</label><input class="input" id="p-icms" type="number" step="0.01" value="${fs.icms!=null?fs.icms:""}" placeholder="regime normal"></div>
+    </div>`;})()}`,
     ()=>{ const nome=$("#p-nome").value.trim(),preco=num($("#p-preco").value);
       if(!nome){toast("Informe o nome.","err");return false;}
       readDraftFicha();
@@ -2208,7 +2222,8 @@ function formProduto(p){
         energia:num($("#p-energia").value),embalagem:num($("#p-embalagem").value),outros:num($("#p-outros").value),
         margem:($("#p-margem").value===""?null:num($("#p-margem").value)),precoModo:$("#p-modo").value,
         imposto:num($("#p-imposto").value),cartao:num($("#p-cartao").value),
-        ifCom:num($("#p-ifcom").value),ifTx:num($("#p-iftx").value),ifAnt:num($("#p-ifant").value)};
+        ifCom:num($("#p-ifcom").value),ifTx:num($("#p-iftx").value),ifAnt:num($("#p-ifant").value),
+        fiscal:{ncm:$("#p-ncm").value.trim(),cest:$("#p-cest").value.trim(),cfop:$("#p-cfop").value.trim(),unidade:($("#p-untrib").value.trim()||"UN"),origem:$("#p-origem").value,csosn:$("#p-csosn").value.trim(),icms:($("#p-icms").value===""?null:num($("#p-icms").value))}};
       if(p.id){Object.assign(byId(db.produtos,p.id),o);}else{o.id=uid();db.produtos.push(o);}
       save(); toast("Produto salvo.","ok"); return true; },"wide");
   renderDraftFicha(); updatePrecPreview();
@@ -3425,6 +3440,32 @@ function vConfig(){
       <div class="field"><label>Imposto sobre vendas (%) — usado no DRE</label><input class="input" id="cf-imposto" type="number" step="0.1" value="${c.impostoPercent}"></div>
       <button class="btn primary" data-act="save-config">Salvar alterações</button>
     </div></div>
+    ${(()=>{const fx=c.fiscal||{};return `<div class="card"><div class="card-head"><h3>🧾 Fiscal — NFC-e (cupom fiscal)</h3></div><div class="card-body">
+      <div class="muted" style="font-size:12px;margin-bottom:10px">Dados para a emissão da nota do consumidor (modelo 65). Preencha com o seu contador. Comece em <b>Homologação</b> (notas de teste, sem valor) e só mude para <b>Produção</b> após validar.</div>
+      <div class="form-grid">
+        <div class="field full"><label>Razão social</label><input class="input" id="fx-razao" value="${esc(fx.razao||"")}"></div>
+        <div class="field"><label>CNPJ</label><input class="input" id="fx-cnpj" value="${esc(fx.cnpj||"")}" placeholder="00.000.000/0000-00"></div>
+        <div class="field"><label>Inscrição Estadual</label><input class="input" id="fx-ie" value="${esc(fx.ie||"")}"></div>
+        <div class="field"><label>Regime tributário</label><select class="input" id="fx-regime">
+          ${[["simples","Simples Nacional"],["presumido","Lucro Presumido"],["real","Lucro Real"]].map(([v,l])=>`<option value="${v}" ${(fx.regime||"simples")===v?"selected":""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label>Ambiente</label><select class="input" id="fx-ambiente">
+          <option value="homologacao" ${(fx.ambiente||"homologacao")==="homologacao"?"selected":""}>Homologação (teste)</option>
+          <option value="producao" ${fx.ambiente==="producao"?"selected":""}>Produção (valor fiscal)</option></select></div>
+        <div class="field"><label>UF</label><input class="input" id="fx-uf" value="${esc(fx.uf||"MA")}" maxlength="2"></div>
+        <div class="field full"><label>Endereço (logradouro)</label><input class="input" id="fx-logradouro" value="${esc(fx.logradouro||"")}"></div>
+        <div class="field"><label>Número</label><input class="input" id="fx-numero" value="${esc(fx.numero||"")}"></div>
+        <div class="field"><label>Bairro</label><input class="input" id="fx-bairro" value="${esc(fx.bairro||"")}"></div>
+        <div class="field"><label>Município</label><input class="input" id="fx-municipio" value="${esc(fx.municipio||"")}"></div>
+        <div class="field"><label>Código IBGE do município</label><input class="input" id="fx-ibge" value="${esc(fx.ibge||"")}" placeholder="ex.: 2111300 (São Luís)" inputmode="numeric"></div>
+        <div class="field"><label>CEP</label><input class="input" id="fx-cep" value="${esc(fx.cep||"")}" inputmode="numeric"></div>
+        <div class="field"><label>Série da NFC-e</label><input class="input" id="fx-serie" type="number" step="1" value="${fx.serie!=null?fx.serie:1}"></div>
+        <div class="field"><label>Próximo número</label><input class="input" id="fx-numnota" type="number" step="1" value="${fx.proxNumero!=null?fx.proxNumero:1}"></div>
+        <div class="field full"><label>Token Focus NFe — Homologação</label><input class="input" id="fx-tokenh" type="password" value="${esc(fx.tokenHomolog||"")}" placeholder="token de teste da Focus"></div>
+        <div class="field full"><label>Token Focus NFe — Produção</label><input class="input" id="fx-tokenp" type="password" value="${esc(fx.tokenProd||"")}" placeholder="token de produção da Focus"></div>
+      </div>
+      <button class="btn primary" data-act="save-config" style="margin-top:4px">Salvar alterações</button>
+      <div class="muted" style="font-size:12px;margin-top:8px">O certificado digital <b>A1</b> e o <b>CSC</b> ficam no painel da <b>Focus NFe</b> — nunca aqui no app. Os tokens ficam guardados na área protegida do seu restaurante (só os seus administradores veem) e são usados pelo servidor para emitir a nota.</div>
+    </div></div>`;})()}
     <div class="card"><div class="card-head"><h3>Alertas &amp; limites</h3></div><div class="card-body">
       <div class="field"><label>Aviso de validade — dias de antecedência</label><input class="input" id="cf-validade" type="number" step="1" min="0" value="${c.validadeAlerta!=null?c.validadeAlerta:7}"></div>
       <div class="field"><label class="inl"><input type="checkbox" id="cf-baixavenc" ${c.baixaVencidoAuto!==false?"checked":""}> Baixa automática de itens vencidos (registra perda “Vencido”)</label></div>
@@ -3701,6 +3742,13 @@ document.addEventListener("click",e=>{
       { const x=$("#cf-mesas"); if(x) db.config.numMesas=num(x.value); }
       { const x=$("#cf-lugares"); if(x) db.config.lugares=num(x.value); }
       { const x=$("#cf-horas"); if(x) db.config.horasDia=num(x.value); }
+      { const r=$("#fx-razao"); if(r){ db.config.fiscal=db.config.fiscal||{};
+        const F=db.config.fiscal, g=(id)=>{const e=$(id);return e?e.value.trim():undefined;};
+        F.razao=g("#fx-razao"); F.cnpj=g("#fx-cnpj"); F.ie=g("#fx-ie"); F.regime=g("#fx-regime"); F.ambiente=g("#fx-ambiente");
+        F.uf=(g("#fx-uf")||"").toUpperCase(); F.logradouro=g("#fx-logradouro"); F.numero=g("#fx-numero"); F.bairro=g("#fx-bairro");
+        F.municipio=g("#fx-municipio"); F.ibge=g("#fx-ibge"); F.cep=g("#fx-cep");
+        F.serie=num($("#fx-serie").value); F.proxNumero=num($("#fx-numnota").value);
+        F.provedor="focus"; F.tokenHomolog=g("#fx-tokenh"); F.tokenProd=g("#fx-tokenp"); } }
       save(); toast("Configurações salvas.","ok"); render(); break;
     case "export-all": download("backup-fornoecaixa-"+todayISO()+".json",JSON.stringify(db,null,2)); toast("Backup gerado.","ok"); break;
     case "reset-demo": if(confirm("Isto substitui TODOS os dados pelos dados de exemplo. Continuar?")){ db=seed(); save(); state.user=db.usuarios[0]; toast("Dados de exemplo recarregados.","ok"); render(); } break;
