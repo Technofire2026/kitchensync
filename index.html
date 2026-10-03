@@ -2454,6 +2454,7 @@ function vSuperAdmin(){
         <div class="hstack" style="justify-content:space-between;align-items:flex-start;gap:10px">
           <div style="min-width:0"><div class="strong" style="font-size:15px">${esc(t.nome||"Restaurante")}</div><div class="muted" style="font-size:11.5px">${esc(String(t.id).slice(0,8))}… ${m.length?"":"· acesso total"}</div></div>
           <div class="hstack" style="gap:6px">
+            <button class="btn sm ghost" data-act="saas-renomear" data-id="${esc(t.id)}" title="Editar nome">✏️</button>
             <button class="btn sm primary" data-act="saas-salvar" data-id="${esc(t.id)}">Salvar</button>
             ${t.id!==SB.tenantId?`<button class="btn sm ghost danger" data-act="saas-excluir" data-id="${esc(t.id)}">🗑 Excluir</button>`:""}
           </div>
@@ -2480,6 +2481,17 @@ async function salvarSaaSModulos(tenantId){
     if(SB.tenantId===tenantId){ SB.modulos=mods.length?mods:null; }
     toast("Módulos atualizados.","ok"); render();
   }catch(e){ toast("Não foi possível salvar.","err"); }
+}
+async function renomearSaaSTenant(id, nomeAtual){
+  const novo=prompt("Novo nome do restaurante:", nomeAtual||"");
+  if(novo==null) return; const nome=novo.trim(); if(!nome){ toast("Informe um nome.","err"); return; }
+  try{
+    const {data,error}=await SB.client.functions.invoke("admin-modulos",{body:{action:"rename",tenant:id,nome}});
+    if(error) throw error;
+    if(data&&data.error){ toast(data.error,"err"); return; }
+    const t=(state.saasTenants||[]).find(x=>x.id===id); if(t) t.nome=nome;
+    toast("Nome atualizado.","ok"); render();
+  }catch(e){ toast("Não foi possível renomear.","err"); }
 }
 async function excluirSaaSTenant(id, nome){
   if(id===SB.tenantId){ toast("Você não pode excluir o seu próprio restaurante.","err"); return; }
@@ -3851,6 +3863,7 @@ document.addEventListener("click",e=>{
     case "manual-fiscal": abrirManualFiscal(); break;
     case "saas-reload": state.saasTenants=undefined; state.saasLoading=false; render(); break;
     case "saas-salvar": salvarSaaSModulos(id); break;
+    case "saas-renomear": { const t=(state.saasTenants||[]).find(x=>x.id===id); renomearSaaSTenant(id, t?t.nome:""); break; }
     case "saas-excluir": { const t=(state.saasTenants||[]).find(x=>x.id===id); excluirSaaSTenant(id, t?t.nome:""); break; }
     case "qr-print": qrImprimirTodos(); break;
     case "qr-um": qrUmaMesa(); break;
