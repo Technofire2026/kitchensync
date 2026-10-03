@@ -2480,6 +2480,12 @@ function abrirManualFiscal(){
     <iframe src="manual-fiscal.html" title="Manual Fiscal" loading="lazy" style="width:100%;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:12px;display:block;background:#fff"></iframe>`,
     null,"wide",true);
 }
+function abrirManualRecebimento(){
+  openModal("Manual — Recebimento, fechamento de conta e conciliação",`
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">Como o garçom fecha a conta, o aviso à gerência, a maquininha e a conciliação do caixa. <a href="manual-recebimento.html" target="_blank" style="color:var(--brand);font-weight:600">↗ abrir em nova aba</a></div>
+    <iframe src="manual-recebimento.html" title="Manual de Recebimento" loading="lazy" style="width:100%;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:12px;display:block;background:#fff"></iframe>`,
+    null,"wide",true);
+}
 
 /* ===== Desempenho de Garçons — ranking de vendas, serviço (10%) e sinais de desvio ===== */
 function vGarcons(){
@@ -3803,6 +3809,10 @@ function vConfig(){
       <button class="btn primary" data-act="save-config" style="margin-top:8px">Salvar alterações</button>
       <div class="muted" style="font-size:12px;margin-top:8px">O certificado digital <b>A1</b> e o <b>CSC</b> ficam no painel da <b>Focus NFe</b> — nunca aqui no app. Os tokens ficam guardados na área protegida do seu restaurante (só os seus administradores veem) e são usados pelo servidor para emitir a nota.</div>
     </div></div>`;})():""}
+    <div class="card"><div class="card-head"><h3>📖 Manuais &amp; treinamento</h3></div><div class="card-body">
+      <div class="muted" style="font-size:13px;margin-bottom:10px">Guias de operação para a sua equipe.</div>
+      <button class="btn" data-act="manual-recebimento">🧾 Recebimento, fechamento de conta e conciliação</button>
+    </div></div>
     <div class="card"><div class="card-head"><h3>Alertas &amp; limites</h3></div><div class="card-body">
       <div class="field"><label>Aviso de validade — dias de antecedência</label><input class="input" id="cf-validade" type="number" step="1" min="0" value="${c.validadeAlerta!=null?c.validadeAlerta:7}"></div>
       <div class="field"><label class="inl"><input type="checkbox" id="cf-baixavenc" ${c.baixaVencidoAuto!==false?"checked":""}> Baixa automática de itens vencidos (registra perda “Vencido”)</label></div>
@@ -4040,6 +4050,7 @@ document.addEventListener("click",e=>{
     case "nfce-cancelar": if(can("vendas")&&moduloAtivo("fiscal"))formCancelarNFCe(id); break;
     case "nfce-ver": { const v=byId(db.vendas,id); if(v&&v.nfce&&v.nfce.url_danfce) window.open(v.nfce.url_danfce,"_blank"); break; }
     case "manual-fiscal": abrirManualFiscal(); break;
+    case "manual-recebimento": abrirManualRecebimento(); break;
     case "saas-reload": state.saasTenants=undefined; state.saasLoading=false; render(); break;
     case "saas-salvar": salvarSaaSModulos(id); break;
     case "saas-renomear": { const t=(state.saasTenants||[]).find(x=>x.id===id); renomearSaaSTenant(id, t?t.nome:""); break; }
