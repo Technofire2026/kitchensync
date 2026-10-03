@@ -472,6 +472,7 @@ const NAV = [
  {id:"dre",        g:"Financeiro", label:"DRE",               ic:"📈", roles:["admin","gerencia","financeiro"]},
  {id:"analises",   g:"Financeiro", label:"Análises",          ic:"🔎", roles:["admin","gerencia","financeiro","compras"]},
  {id:"kpis",       g:"Financeiro", label:"Margens & KPIs",    ic:"👑", roles:["admin","gerencia","financeiro"]},
+ {id:"garcons",    g:"Financeiro", label:"Desempenho de Garçons", ic:"🏅", roles:["admin","gerencia"]},
  {id:"funcionarios",g:"Sistema",  label:"Funcionários",       ic:"👥", roles:["admin","gerencia"]},
  {id:"config",     g:"Sistema",   label:"Configurações",      ic:"⚙️", roles:["admin"]},
  {id:"curso",      g:"Ajuda",     label:"Treinamento",        ic:"🎓", roles:["admin","gerencia","operacao","estoque","compras","financeiro"]},
@@ -481,7 +482,7 @@ const NAV = [
 const MODULOS = {
   cozinha:    {nome:"Cozinha & Suprimentos", ic:"🍳", navs:["compras","cotacoes","fornecedores","insumos","movimentacao","bar","limpeza","descartaveis","perdas","fechamento","fechamento-bar","producao"]},
   vendas:     {nome:"Vendas & PDV",          ic:"🧾", navs:["vendas","comandas","kds","caixa","delivery","cardapio-qr"]},
-  financeiro: {nome:"Financeiro",            ic:"📈", navs:["despesas","dre","analises","kpis"]},
+  financeiro: {nome:"Financeiro",            ic:"📈", navs:["despesas","dre","analises","kpis","garcons"]},
   fiscal:     {nome:"Fiscal (NFC-e)",        ic:"🧾", navs:[]},
 };
 /* E-mails do(s) operador(es) do SaaS que enxergam o Painel SaaS. Ajuste conforme necessário. */
@@ -965,6 +966,7 @@ function viewHTML(){
     case "delivery": return vDelivery();
     case "cardapio-qr": return vCardapioQR();
     case "kpis": return vKpis();
+    case "garcons": return vGarcons();
     case "funcionarios": return vFuncionarios();
     case "config": return vConfig();
     case "curso": return vCurso();
@@ -2479,6 +2481,57 @@ function abrirManualFiscal(){
     null,"wide",true);
 }
 
+/* ===== Desempenho de Garçons — ranking de vendas, serviço (10%) e sinais de desvio ===== */
+function vGarcons(){
+  const per=state.garcomPeriodo||"mes";
+  const hoje=todayISO(), mes=hoje.slice(0,7);
+  const inPer=v=> per==="tudo" ? true : per==="hoje" ? v.data===hoje : (String(v.data||"").slice(0,7)===mes);
+  const vendas=(db.vendas||[]).filter(v=>v.canal==="Salão" && v.garcomId && inPer(v));
+  const agg={};
+  vendas.forEach(v=>{
+    const g=agg[v.garcomId]=agg[v.garcomId]||{id:v.garcomId,nome:v.garcomNome||"—",nped:0,receita:0,servico:0,pagou:0,naopagou:0,canc:0,pessoas:0};
+    g.nped++; g.receita+=vendaTotal(v); g.pessoas+=num(v.pessoas);
+    if(v.servicoPago){ g.pagou++; g.servico+=num(v.servico); } else { g.naopagou++; }
+    if(v.nfce && v.nfce.status==="cancelada") g.canc++;
+  });
+  const rows=Object.values(agg).sort((a,b)=>b.receita-a.receita);
+  const perBtn=(k,lab)=>`<button class="btn sm ${per===k?"primary":"ghost"}" data-act="garcom-per" data-per="${k}">${lab}</button>`;
+  const head=`<div class="toolbar"><div><div class="page-title">Desempenho de Garçons</div><div class="page-sub">Ranking por vendas, serviço (10%) e sinais de desvio — crédito ao garçom que abriu a mesa</div></div><div class="spacer"></div>${perBtn("hoje","Hoje")}${perBtn("mes","Mês")}${perBtn("tudo","Tudo")}</div>`;
+  if(!rows.length){
+    return head+`<div class="card"><div class="card-body">${emptyBox("🏅","Sem vendas de salão no período","As estatísticas usam as mesas fechadas (o garçom que abriu a mesa). Abra e feche mesas para começar a medir.")}</div></div>`;
+  }
+  const taxa=g=>{ const t=g.pagou+g.naopagou; return t? g.pagou/t*100 : 0; };
+  const taxaCls=p=> p>=85?"green": p>=60?"":"red";
+  const medal=i=> i===0?"🥇":i===1?"🥈":i===2?"🥉":String(i+1);
+  const topVend=rows[0];
+  const comServ=rows.filter(g=>(g.pagou+g.naopagou)>=3);
+  const bestServ=comServ.slice().sort((a,b)=>taxa(b)-taxa(a))[0];
+  const flagServ=comServ.slice().sort((a,b)=>taxa(a)-taxa(b))[0];
+  const maisCanc=rows.slice().sort((a,b)=>b.canc-a.canc)[0];
+  const terceiraKpi = (flagServ && taxa(flagServ)<60)
+    ? `<div class="kpi"><div class="k-lab">⚠️ Atenção — 10% baixo</div><div class="k-val" style="font-size:19px">${esc(flagServ.nome)}</div><div class="k-sub">só ${NUM(taxa(flagServ),0)}% das mesas pagaram o 10% — verificar</div></div>`
+    : (maisCanc&&maisCanc.canc>0 ? `<div class="kpi"><div class="k-lab">⚠️ Mais cancelamentos</div><div class="k-val" style="font-size:19px">${esc(maisCanc.nome)}</div><div class="k-sub">${maisCanc.canc} NFC-e cancelada(s)</div></div>` : "");
+  return head+`
+  <div class="grid kpis" style="margin-bottom:16px">
+    <div class="kpi"><div class="k-lab">🥇 Maior vendedor</div><div class="k-val" style="font-size:19px">${esc(topVend.nome)}</div><div class="k-sub">${BRL(topVend.receita)} · ${topVend.nped} mesa(s)</div></div>
+    ${bestServ?`<div class="kpi"><div class="k-lab">🤝 Melhor em serviço (10%)</div><div class="k-val" style="font-size:19px">${esc(bestServ.nome)}</div><div class="k-sub">${NUM(taxa(bestServ),0)}% das mesas pagaram o 10%</div></div>`:""}
+    ${terceiraKpi}
+  </div>
+  <div class="card"><div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>#</th><th>Garçom</th><th class="r">Mesas</th><th class="r">Receita</th><th class="r">Ticket</th><th class="r">10% pago</th><th class="r">Serviço R$</th><th class="r">Cancel.</th></tr></thead>
+    <tbody>${rows.map((g,i)=>{ const t=g.pagou+g.naopagou, p=taxa(g); return `<tr>
+      <td class="strong">${medal(i)}</td>
+      <td class="strong">${esc(g.nome)}</td>
+      <td class="r">${g.nped}</td>
+      <td class="r strong">${BRL(g.receita)}</td>
+      <td class="r">${BRL(g.nped?g.receita/g.nped:0)}</td>
+      <td class="r"><span class="pill ${taxaCls(p)}">${g.pagou}/${t} · ${NUM(p,0)}%</span></td>
+      <td class="r">${BRL(g.servico)}</td>
+      <td class="r">${g.canc>0?`<span class="pill red">${g.canc}</span>`:`<span class="muted">0</span>`}</td></tr>`; }).join("")}</tbody>
+  </table></div></div>
+  <div class="callout note" style="font-size:12.5px;background:var(--brand-soft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:14px">
+    <b>Como ler:</b> a venda é creditada ao garçom que <b>abriu a mesa</b>. <b>10% pago</b> mostra em quantas mesas o cliente pagou o serviço — taxa baixa é um sinal a investigar. <b>Cancel.</b> conta NFC-e canceladas (outro sinal). A conciliação <b>app × maquininha</b> é feita no <b>fechamento do caixa</b> (total do turno), porque o relatório da maquininha não vem separado por garçom.</div>`;
+}
 /* ===== Painel SaaS (super-admin do operador) — módulos contratados por restaurante ===== */
 function vSuperAdmin(){
   if(!isSuperAdmin()) return `<div class="card"><div class="card-body">${emptyBox("🔒","Acesso restrito","Esta área é exclusiva do operador do SaaS.")}</div></div>`;
@@ -2816,8 +2869,10 @@ function formPagamentoComanda(id){
   const total=comandaTotalGeral(c); const porPessoa=c.pessoas>0?total/c.pessoas:total;
   draftPag=[];
   openModal("Pagamento — Mesa "+esc(c.mesa),`
-    <div class="hstack" style="justify-content:space-between;margin-bottom:6px"><span class="muted">Total da mesa</span><span class="strong" style="font-size:18px">${BRL(total)}</span></div>
-    <div class="muted" style="font-size:12.5px;margin-bottom:12px">Serviço ${c.servicoOn===false?"não incluído":NUM(taxaServicoPct(),0)+"% incluído"} · ${c.pessoas} pessoa(s) · <b>${BRL(porPessoa)}</b> por pessoa</div>
+    <div class="hstack" style="justify-content:space-between;margin-bottom:6px"><span class="muted">Total da mesa</span><span class="strong" style="font-size:18px" id="pg-total">${BRL(total)}</span></div>
+    <div class="field" style="margin-bottom:8px"><label class="inl" style="margin:0;font-size:13.5px"><input type="checkbox" data-act="pg-serv" data-id="${c.id}" ${c.servicoOn===false?"":"checked"}> Cliente pagou o serviço (${NUM(taxaServicoPct(),0)}%) — <b id="pg-serv-val">${BRL(comandaServicoVal(c))}</b></label>
+      <div class="muted" style="font-size:12px;margin-top:2px">Se o cliente não pagou os 10%, desmarque — sai do total e fica registrado na estatística do garçom.</div></div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px" id="pg-ppessoa">${c.pessoas} pessoa(s) · <b>${BRL(porPessoa)}</b> por pessoa</div>
     <div class="field"><label>Formas de pagamento</label>
       <div class="hstack" style="gap:8px;flex-wrap:wrap">
         <select class="input" id="pg-forma" style="max-width:180px"><option>Dinheiro</option><option>Pix</option><option>Cartão débito</option><option>Cartão crédito</option><option>Outro</option></select>
@@ -2828,14 +2883,20 @@ function formPagamentoComanda(id){
     </div>
     <div id="pg-lista"></div>
     <div id="pg-resumo" class="muted" style="font-size:13px;margin-top:8px"></div>`,
-    ()=>{ const pago=draftPag.reduce((s,p)=>s+num(p.valor),0);
-      if(draftPag.length===0){ // pagamento simples: usa a forma selecionada pelo total
-        const f=$("#pg-forma").value; draftPag=[{forma:f,valor:total}];
-      }
+    ()=>{ const total=comandaTotalGeral(c);
+      if(draftPag.length===0){ const f=$("#pg-forma").value; draftPag=[{forma:f,valor:total}]; }
       const pg=draftPag.reduce((s,p)=>s+num(p.valor),0);
       if(pg+0.009<total){ toast("Falta "+BRL(total-pg)+" para cobrir o total.","err"); return false; }
       fecharComanda(id, draftPag.slice()); return true; },"");
   setTimeout(()=>{ atualizaPagResumo(id); },0);
+}
+function atualizaPagModal(id){
+  const c=byId(db.comandas,id); if(!c) return;
+  const total=comandaTotalGeral(c), pp=c.pessoas>0?total/c.pessoas:total;
+  const t=$("#pg-total"); if(t) t.textContent=BRL(total);
+  const sv=$("#pg-serv-val"); if(sv) sv.textContent=BRL(comandaServicoVal(c));
+  const pe=$("#pg-ppessoa"); if(pe) pe.innerHTML=`${c.pessoas} pessoa(s) · <b>${BRL(pp)}</b> por pessoa`;
+  atualizaPagResumo(id);
 }
 function atualizaPagResumo(id){
   const c=byId(db.comandas,id); if(!c) return; const total=comandaTotalGeral(c);
@@ -2853,7 +2914,7 @@ function fecharComanda(id, pagamentos){
   const permMin=Math.round((c.fechamento-c.abertura)/60000);
   const formas=(pagamentos&&pagamentos.length)?[...new Set(pagamentos.map(p=>p.forma))].join(" + "):"Outro";
   const cxA=caixaAberto();
-  const nv={id:uid(),data:todayISO(),ts:Date.now(),pagamento:formas,canal:"Salão",pessoas:num(c.pessoas),mesa:c.mesa,permanenciaMin:permMin,comandaId:c.id,itens:itensN,baixas,servico:comandaServicoVal(c),pagamentos:pagamentos||[],caixaId:cxA?cxA.id:null};
+  const nv={id:uid(),data:todayISO(),ts:Date.now(),pagamento:formas,canal:"Salão",pessoas:num(c.pessoas),mesa:c.mesa,permanenciaMin:permMin,comandaId:c.id,itens:itensN,baixas,servico:comandaServicoVal(c),servicoPago:(c.servicoOn!==false),garcomId:c.garcomId||null,garcomNome:c.garcomNome||"",fechadaPorId:state.user.id,fechadaPorNome:state.user.nome,pagamentos:pagamentos||[],caixaId:cxA?cxA.id:null};
   db.vendas.push(nv);
   notificar(`🪑 Mesa ${c.mesa||"?"} fechou a conta — ${BRL(vendaTotal(nv))} (${formas}). Levar a maquininha.`, ["gerencia"], null, "pagamento");
   state.comandaId=null; save(); toast("Mesa fechada — venda de salão registrada.","ok"); render();
@@ -3955,6 +4016,8 @@ document.addEventListener("click",e=>{
     case "cmd-dec": cmdQtd(a.getAttribute("data-iid"),-1); break;
     case "cmd-cat": state.cmdCat=a.getAttribute("data-cat"); render(); break;
     case "cmd-servico": cmdServico(a.getAttribute("data-id")||state.comandaId); break;
+    case "pg-serv": { const c=byId(db.comandas,id); if(c){ c.servicoOn=!!a.checked; atualizaPagModal(id); } break; }
+    case "garcom-per": state.garcomPeriodo=a.getAttribute("data-per")||"mes"; render(); break;
     case "cmd-enviar": cmdEnviar(a.getAttribute("data-id")); break;
     case "cmd-pagar": formPagamentoComanda(a.getAttribute("data-id")); break;
     case "pg-add": { const f=$("#pg-forma").value; const v=num($("#pg-valor").value); if(v>0){ draftPag.push({forma:f,valor:v}); $("#pg-valor").value=""; atualizaPagResumo(state.comandaId); } break; }
