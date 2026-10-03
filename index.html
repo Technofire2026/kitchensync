@@ -3751,6 +3751,10 @@ document.addEventListener("click",e=>{
     case "login": doLogin(); break;
     case "sb-login": doSbAuth(); break;
     case "sb-toggle": state.authMode = (state.authMode==="signup"?"login":"signup"); renderAuth(); break;
+    case "sb-esqueci": renderEsqueciSenha(); break;
+    case "sb-reset": enviarReset(); break;
+    case "sb-nova-senha": salvarNovaSenha(); break;
+    case "sb-voltar-login": state.authMode="login"; renderAuth(); break;
     case "reload": if(typeof location!=="undefined") location.reload(); break;
     case "logout":
       if(typeof SB!=="undefined" && SB.on){ if(confirm("Sair da conta?")){ SB.client.auth.signOut().then(()=>{ state.user=null; renderAuth(); }).catch(()=>{ state.user=null; renderAuth(); }); } }
@@ -4238,6 +4242,7 @@ function renderAuth(err){
       <div id="loginErr">${err?`<div class="login-err">${esc(err)}</div>`:""}</div>
       <div class="field"><label>E-mail</label><input class="input" id="lg-email" type="email" placeholder="voce@empresa.com" autocomplete="username"></div>
       <div class="field"><label>Senha</label><input class="input" id="lg-senha" type="password" placeholder="••••••" autocomplete="${signup?"new-password":"current-password"}"></div>
+      ${!signup?`<div style="text-align:right;margin:-6px 0 4px"><a data-act="sb-esqueci" style="cursor:pointer;color:var(--ink-3);font-size:12.5px">Esqueci minha senha</a></div>`:""}
       <button class="btn primary" id="auth-primary" data-act="sb-login" style="width:100%;justify-content:center;margin-top:6px">${signup?"Criar conta":"Entrar"}</button>
       <div class="login-hint">${signup?"Já tem conta? ":"Primeiro acesso? "}<a data-act="sb-toggle" style="cursor:pointer;color:var(--brand);font-weight:600">${signup?"Entrar":"Criar conta"}</a></div>
     </div></div>
@@ -4264,6 +4269,69 @@ async function doSbAuth(){
   }catch(err){
     renderAuth((err&&err.message)?err.message:"Falha na autenticação.");
   }
+}
+function renderEsqueciSenha(msg,ok){
+  $("#root").innerHTML = `
+  <div class="login-wrap">
+    <div class="login-hero">
+      <div class="brandmark"><img class="loginlogo" src="${LOGO_FULL}" alt="Kitchen Sync"></div>
+      <div><h1>Esqueceu a senha? Sem problema.</h1>
+        <p>Informe o seu e-mail e enviaremos um link para você criar uma nova senha.</p></div>
+      <div class="pie"></div>
+    </div>
+    <div class="login-panel"><div class="login-card">
+      <h2>Redefinir senha</h2>
+      <div class="sub">Você vai receber um e-mail com o link para redefinir.</div>
+      <div id="rsMsg">${msg?(ok?`<div style="background:var(--basil-soft);color:#0f7a54;padding:10px 13px;border-radius:9px;font-size:13px;margin-bottom:14px;font-weight:600">${esc(msg)}</div>`:`<div class="login-err">${esc(msg)}</div>`):""}</div>
+      <div class="field"><label>E-mail</label><input class="input" id="rs-email" type="email" placeholder="voce@empresa.com" autocomplete="username"></div>
+      <button class="btn primary" id="rs-btn" data-act="sb-reset" style="width:100%;justify-content:center;margin-top:6px">Enviar link de redefinição</button>
+      <div class="login-hint"><a data-act="sb-voltar-login" style="cursor:pointer;color:var(--brand);font-weight:600">← Voltar para entrar</a></div>
+    </div></div>
+  </div>`;
+  const e=$("#rs-email"); if(e) e.addEventListener("keydown",ev=>{ if(ev.key==="Enter") enviarReset(); });
+}
+async function enviarReset(){
+  const email=($("#rs-email")?$("#rs-email").value:"").trim(); const btn=$("#rs-btn");
+  if(!email){ renderEsqueciSenha("Informe o seu e-mail."); return; }
+  if(btn){ btn.textContent="Enviando…"; btn.disabled=true; }
+  try{
+    const {error}=await SB.client.auth.resetPasswordForEmail(email,{redirectTo: location.origin+location.pathname});
+    if(error) throw error;
+    renderEsqueciSenha("Pronto! Se existir uma conta com esse e-mail, enviamos um link para redefinir a senha. Verifique a caixa de entrada (e o spam).", true);
+  }catch(e){ renderEsqueciSenha((e&&e.message)||"Não foi possível enviar agora. Tente novamente em instantes."); }
+}
+function renderNovaSenha(msg){
+  $("#root").innerHTML = `
+  <div class="login-wrap">
+    <div class="login-hero">
+      <div class="brandmark"><img class="loginlogo" src="${LOGO_FULL}" alt="Kitchen Sync"></div>
+      <div><h1>Crie a sua nova senha.</h1>
+        <p>Escolha uma senha nova para voltar a acessar o Kitchen Sync.</p></div>
+      <div class="pie"></div>
+    </div>
+    <div class="login-panel"><div class="login-card">
+      <h2>Nova senha</h2>
+      <div class="sub">Digite a sua nova senha de acesso (mínimo 6 caracteres).</div>
+      <div id="nsMsg">${msg?`<div class="login-err">${esc(msg)}</div>`:""}</div>
+      <div class="field"><label>Nova senha</label><input class="input" id="ns-senha" type="password" placeholder="••••••" autocomplete="new-password"></div>
+      <button class="btn primary" id="ns-btn" data-act="sb-nova-senha" style="width:100%;justify-content:center;margin-top:6px">Salvar nova senha</button>
+    </div></div>
+  </div>`;
+  attachPasswordEyes($("#root"));
+  const s=$("#ns-senha"); if(s) s.addEventListener("keydown",ev=>{ if(ev.key==="Enter") salvarNovaSenha(); });
+}
+async function salvarNovaSenha(){
+  const senha=$("#ns-senha")?$("#ns-senha").value:""; const btn=$("#ns-btn");
+  if((senha||"").length<6){ renderNovaSenha("A senha precisa de pelo menos 6 caracteres."); return; }
+  if(btn){ btn.textContent="Salvando…"; btn.disabled=true; }
+  try{
+    const {error}=await SB.client.auth.updateUser({password:senha});
+    if(error) throw error;
+    try{ if(location.hash) history.replaceState(null,"",location.pathname+location.search); }catch(_){}
+    const {data}=await SB.client.auth.getSession();
+    if(data&&data.session){ await sbProceed(data.session); }
+    else { state.authMode="login"; renderAuth("Senha alterada com sucesso! Entre com a nova senha."); }
+  }catch(e){ renderNovaSenha((e&&e.message)||"Não foi possível salvar a senha. Tente novamente."); }
 }
 async function cloudEnter(){
   await CLOUD.whoami();
@@ -4457,10 +4525,12 @@ let cardapioNovoBound=false;
   if(mode==="sb"){
     $("#root").innerHTML = `<div style="height:100vh;display:grid;place-items:center;color:var(--ink-3);font-family:'Bricolage Grotesque',sans-serif">☁︎ Conectando…</div>`;
     try{
+      const isRecovery = /type=recovery/.test(location.hash||"");
       const sess=await SB.session();
-      if(!sess){ renderAuth(); }
+      if(isRecovery){ renderNovaSenha(); }
+      else if(!sess){ renderAuth(); }
       else { await sbProceed(sess); }
-      try{ SB.client.auth.onAuthStateChange((ev,s2)=>{ if(ev==="SIGNED_OUT"){ state.user=null; renderAuth(); } }); }catch(e){}
+      try{ SB.client.auth.onAuthStateChange((ev,s2)=>{ if(ev==="PASSWORD_RECOVERY"){ renderNovaSenha(); } else if(ev==="SIGNED_OUT"){ state.user=null; renderAuth(); } }); }catch(e){}
     }catch(e){ renderConfigError("Não foi possível conectar ao Supabase. Verifique as chaves (SUPA_URL / anon key), se o SQL foi executado e sua internet."); }
   } else if(mode==="cloud"){
     $("#root").innerHTML = `<div style="height:100vh;display:grid;place-items:center;color:var(--ink-3);font-family:'Bricolage Grotesque',sans-serif">☁︎ Conectando à nuvem…</div>`;
