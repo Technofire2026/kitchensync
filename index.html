@@ -2347,10 +2347,12 @@ function formVenda(){
       const baixas=baixasDaVenda(itensN);
       aplicarBaixas(baixas,-1);
       const cxA=caixaAberto();
-      db.vendas.push({id:uid(),data,ts:Date.now(),pagamento:$("#v-pag").value,canal:($("#v-canal")?$("#v-canal").value:"Balcão"),pessoas:($("#v-pessoas")?num($("#v-pessoas").value):0),itens:itensN,baixas,caixaId:cxA?cxA.id:null});
+      const nv={id:uid(),data,ts:Date.now(),pagamento:$("#v-pag").value,canal:($("#v-canal")?$("#v-canal").value:"Balcão"),pessoas:($("#v-pessoas")?num($("#v-pessoas").value):0),itens:itensN,baixas,caixaId:cxA?cxA.id:null};
+      db.vendas.push(nv);
       save();
       if(baixas.some(b=>{const i=byId(db.insumos,b.insumoId);return i&&num(i.estoque)<0;})) toast("Venda registrada. Atenção: estoque de algum item de revenda ficou negativo.","ok");
       else toast(baixas.length?"Venda registrada e estoque baixado.":"Venda registrada.","ok");
+      autoEmitirNFCe(nv);
       return true; },"wide");
   renderDraftVenda();
 }
@@ -2385,7 +2387,7 @@ function nfcePill(v){
 function nfceAcoesHTML(v){
   if(!can("vendas")||!moduloAtivo("fiscal")) return "";
   const s=v.nfce&&v.nfce.status;
-  if(s==="autorizada") return v.nfce.url_danfce?`<button class="btn sm ghost" data-act="nfce-ver" data-id="${v.id}">Cupom</button>`:"";
+  if(s==="autorizada") return `${v.nfce.url_danfce?`<button class="btn sm ghost" data-act="nfce-ver" data-id="${v.id}">Cupom</button>`:""}<button class="btn sm ghost danger" data-act="nfce-cancelar" data-id="${v.id}">Cancelar</button>`;
   if(s==="processando") return `<button class="btn sm ghost" data-act="nfce-status" data-id="${v.id}">Atualizar</button>`;
   return `<button class="btn sm ghost" data-act="emitir-nfce" data-id="${v.id}">Emitir</button>`;
 }
@@ -2429,6 +2431,46 @@ async function consultarNFCe(id){
     if(data.status==="autorizada") toast("NFC-e autorizada!","ok");
     else if(data.status==="erro") toast("Rejeitada: "+(data.mensagem||""),"err");
   }catch(e){ toast("Não foi possível consultar o status.","err"); }
+}
+function formCancelarNFCe(id){
+  const v=byId(db.vendas,id); if(!v||!v.nfce||v.nfce.status!=="autorizada") return;
+  if(!sbOnline()){ toast("Disponível na versão online.","err"); return; }
+  openModal("Cancelar NFC-e",`
+    <div class="muted" style="font-size:13px;margin-bottom:12px">Cancelamento do cupom${v.nfce.numero?(" nº "+esc(String(v.nfce.numero))):""} de <b>${BRL(vendaTotal(v))}</b>. O prazo legal para cancelar uma NFC-e é curto (em geral até 30 minutos após a autorização). A justificativa precisa ter ao menos <b>15 caracteres</b>.</div>
+    <div class="field full"><label>Justificativa do cancelamento *</label><textarea class="input" id="nf-just" rows="3" placeholder="ex.: Cancelamento por erro no pedido do cliente"></textarea></div>`,
+    ()=>{ const j=($("#nf-just").value||"").trim(); if(j.length<15){ toast("A justificativa precisa de ao menos 15 caracteres.","err"); return false; } cancelarNFCe(id,j); return true; });
+  setTimeout(()=>{ const b=$("#modal .btn.primary"); if(b){ b.textContent="Confirmar cancelamento"; b.classList.add("danger"); } },30);
+}
+async function cancelarNFCe(id,justificativa){
+  const v=byId(db.vendas,id); if(!v) return;
+  if(!sbOnline()){ toast("Disponível na versão online.","err"); return; }
+  const prev=Object.assign({},v.nfce);
+  try{
+    const {data,error}=await SB.client.functions.invoke("emitir-nfce",{body:{action:"cancelar",ref:v.id,justificativa}});
+    if(error) throw error;
+    if(data&&data.error){ toast("Não foi possível cancelar: "+data.error,"err"); return; }
+    if(data&&data.status==="cancelada"){
+      v.nfce=Object.assign({},prev,data,{status:"cancelada"});
+      if(!v.nfce.numero) v.nfce.numero=prev.numero;
+      save(); render(); toast("NFC-e cancelada.","ok");
+    } else {
+      toast("Não foi possível cancelar: "+((data&&data.mensagem)||"verifique o prazo de cancelamento."),"err");
+    }
+  }catch(e){ toast("Erro ao cancelar a NFC-e.","err"); }
+}
+/* Emissão automática ao finalizar a venda (quando ligado em Config → Fiscal). Não trava o fechamento. */
+function autoEmitirNFCe(v){
+  try{
+    if(!v) return;
+    const F=(db.config&&db.config.fiscal)||{};
+    if(!F.autoEmitir) return;
+    if(!moduloAtivo("fiscal")) return;
+    if(!sbOnline()) return;
+    if(v.nfce && (v.nfce.status==="autorizada"||v.nfce.status==="processando")) return;
+    const tk=(F.ambiente==="producao")?F.tokenProd:F.tokenHomolog;
+    if(!tk) return;
+    emitirNFCe(v.id,"","");
+  }catch(e){}
 }
 function abrirManualFiscal(){
   openModal("Manual de configuração fiscal (NFC-e)",`
@@ -2811,8 +2853,10 @@ function fecharComanda(id, pagamentos){
   const permMin=Math.round((c.fechamento-c.abertura)/60000);
   const formas=(pagamentos&&pagamentos.length)?[...new Set(pagamentos.map(p=>p.forma))].join(" + "):"Outro";
   const cxA=caixaAberto();
-  db.vendas.push({id:uid(),data:todayISO(),ts:Date.now(),pagamento:formas,canal:"Salão",pessoas:num(c.pessoas),mesa:c.mesa,permanenciaMin:permMin,comandaId:c.id,itens:itensN,baixas,servico:comandaServicoVal(c),pagamentos:pagamentos||[],caixaId:cxA?cxA.id:null});
+  const nv={id:uid(),data:todayISO(),ts:Date.now(),pagamento:formas,canal:"Salão",pessoas:num(c.pessoas),mesa:c.mesa,permanenciaMin:permMin,comandaId:c.id,itens:itensN,baixas,servico:comandaServicoVal(c),pagamentos:pagamentos||[],caixaId:cxA?cxA.id:null};
+  db.vendas.push(nv);
   state.comandaId=null; save(); toast("Mesa fechada — venda de salão registrada.","ok"); render();
+  autoEmitirNFCe(nv);
 }
 
 /* ===== Caixa / PDV de balcão — abertura, sangria/suprimento e fechamento ===== */
@@ -3067,9 +3111,11 @@ function entregaEntregue(id){ const e=byId(db.entregas,id); if(!e||e.status==="e
   const baixas=baixasDaVenda(itensN); aplicarBaixas(baixas,-1);
   const cxA=caixaAberto();
   const pagamentos=/dinheiro/i.test(e.pagamento||"")?[{forma:"Dinheiro",valor:entregaTotal(e)}]:[];
-  db.vendas.push({id:uid(),data:todayISO(),ts:Date.now(),pagamento:e.pagamento,canal:"Delivery",itens:itensN,baixas,
-    taxaEntrega:num(e.taxaEntrega),servico:0,pagamentos,entregaId:e.id,cliente:e.cliente,caixaId:cxA?cxA.id:null});
-  e.vendaRegistrada=true; save(); toast(`Pedido #${e.numero} entregue — venda registrada.`,"ok"); render(); }
+  const nv={id:uid(),data:todayISO(),ts:Date.now(),pagamento:e.pagamento,canal:"Delivery",itens:itensN,baixas,
+    taxaEntrega:num(e.taxaEntrega),servico:0,pagamentos,entregaId:e.id,cliente:e.cliente,caixaId:cxA?cxA.id:null};
+  db.vendas.push(nv);
+  e.vendaRegistrada=true; save(); toast(`Pedido #${e.numero} entregue — venda registrada.`,"ok"); render();
+  autoEmitirNFCe(nv); }
 function entregaCancel(id){ const e=byId(db.entregas,id); if(!e) return;
   confirmDel(`Cancelar o pedido #${e.numero}? (não gera venda)`,()=>{ e.status="cancelado"; e.canceladoEm=Date.now(); }); }
 function entregaPrint(id){ const e=byId(db.entregas,id); if(!e) return;
@@ -3628,6 +3674,9 @@ function vConfig(){
         <div class="field"><label>Situação tributária IBS/CBS (CST)</label><input class="input" id="fx-ibscst" value="${esc(fx.ibsCbsCst||"000")}" placeholder="000"></div>
         <div class="field"><label>Classificação tributária (cClassTrib)</label><input class="input" id="fx-ibsclass" value="${esc(fx.ibsCbsClass||"000001")}" placeholder="000001"></div>
       </div>
+      <div style="border-top:1px solid var(--line);margin:12px 0 8px;padding-top:10px"><b style="font-size:13.5px">Emissão automática</b></div>
+      <div class="field full"><label class="inl"><input type="checkbox" id="fx-auto" ${fx.autoEmitir?"checked":""}> Emitir NFC-e automaticamente ao finalizar cada venda (balcão, mesa e delivery)</label></div>
+      <div class="muted" style="font-size:12px;margin:-4px 0 4px">Quando ligado, ao fechar a conta a nota sai sozinha, <b>sem CPF</b>. Para pôr CPF na nota, deixe desligado e use o botão <b>Emitir</b>. Se a emissão falhar, a venda é registrada mesmo assim e você pode reemitir manualmente.</div>
       <button class="btn primary" data-act="save-config" style="margin-top:8px">Salvar alterações</button>
       <div class="muted" style="font-size:12px;margin-top:8px">O certificado digital <b>A1</b> e o <b>CSC</b> ficam no painel da <b>Focus NFe</b> — nunca aqui no app. Os tokens ficam guardados na área protegida do seu restaurante (só os seus administradores veem) e são usados pelo servidor para emitir a nota.</div>
     </div></div>`;})():""}
@@ -3863,6 +3912,7 @@ document.addEventListener("click",e=>{
     case "entrega-print": entregaPrint(id); break;
     case "emitir-nfce": if(can("vendas")&&moduloAtivo("fiscal"))formEmitirNFCe(id); break;
     case "nfce-status": consultarNFCe(id); break;
+    case "nfce-cancelar": if(can("vendas")&&moduloAtivo("fiscal"))formCancelarNFCe(id); break;
     case "nfce-ver": { const v=byId(db.vendas,id); if(v&&v.nfce&&v.nfce.url_danfce) window.open(v.nfce.url_danfce,"_blank"); break; }
     case "manual-fiscal": abrirManualFiscal(); break;
     case "saas-reload": state.saasTenants=undefined; state.saasLoading=false; render(); break;
@@ -3929,7 +3979,8 @@ document.addEventListener("click",e=>{
         { const e=$("#fx-cbs"); if(e) F.cbsAliquota=num(e.value); }
         { const e=$("#fx-ibsuf"); if(e) F.ibsUfAliquota=num(e.value); }
         { const e=$("#fx-ibsmun"); if(e) F.ibsMunAliquota=num(e.value); }
-        F.ibsCbsCst=g("#fx-ibscst")||"000"; F.ibsCbsClass=g("#fx-ibsclass")||"000001"; } }
+        F.ibsCbsCst=g("#fx-ibscst")||"000"; F.ibsCbsClass=g("#fx-ibsclass")||"000001";
+        { const e=$("#fx-auto"); if(e) F.autoEmitir=!!e.checked; } } }
       save(); toast("Configurações salvas.","ok"); render(); break;
     case "export-all": download("backup-fornoecaixa-"+todayISO()+".json",JSON.stringify(db,null,2)); toast("Backup gerado.","ok"); break;
     case "reset-demo": if(confirm("Isto substitui TODOS os dados pelos dados de exemplo. Continuar?")){ db=seed(); save(); state.user=db.usuarios[0]; toast("Dados de exemplo recarregados.","ok"); render(); } break;
