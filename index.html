@@ -2453,7 +2453,10 @@ function vSuperAdmin(){
       <div class="card"><div class="card-body">
         <div class="hstack" style="justify-content:space-between;align-items:flex-start;gap:10px">
           <div style="min-width:0"><div class="strong" style="font-size:15px">${esc(t.nome||"Restaurante")}</div><div class="muted" style="font-size:11.5px">${esc(String(t.id).slice(0,8))}… ${m.length?"":"· acesso total"}</div></div>
-          <button class="btn sm primary" data-act="saas-salvar" data-id="${esc(t.id)}">Salvar</button>
+          <div class="hstack" style="gap:6px">
+            <button class="btn sm primary" data-act="saas-salvar" data-id="${esc(t.id)}">Salvar</button>
+            ${t.id!==SB.tenantId?`<button class="btn sm ghost danger" data-act="saas-excluir" data-id="${esc(t.id)}">🗑 Excluir</button>`:""}
+          </div>
         </div>
         <div class="hstack" style="gap:16px;margin-top:10px;flex-wrap:wrap">
           ${modKeys.map(k=>`<label class="inl"><input type="checkbox" class="sa-chk" data-tid="${esc(t.id)}" data-mod="${k}" ${m.includes(k)?"checked":""}> ${MODULOS[k].ic} ${esc(MODULOS[k].nome)}</label>`).join("")}
@@ -2477,6 +2480,17 @@ async function salvarSaaSModulos(tenantId){
     if(SB.tenantId===tenantId){ SB.modulos=mods.length?mods:null; }
     toast("Módulos atualizados.","ok"); render();
   }catch(e){ toast("Não foi possível salvar.","err"); }
+}
+async function excluirSaaSTenant(id, nome){
+  if(id===SB.tenantId){ toast("Você não pode excluir o seu próprio restaurante.","err"); return; }
+  if(!confirm('Excluir o restaurante "'+(nome||id)+'" e TODOS os seus dados (estoque, vendas, configurações)?\n\nEsta ação é PERMANENTE e não pode ser desfeita.')) return;
+  try{
+    const {data,error}=await SB.client.functions.invoke("admin-modulos",{body:{action:"delete",tenant:id}});
+    if(error) throw error;
+    if(data&&data.error){ toast(data.error,"err"); return; }
+    state.saasTenants=(state.saasTenants||[]).filter(t=>t.id!==id);
+    toast("Restaurante excluído.","ok"); render();
+  }catch(e){ toast("Não foi possível excluir.","err"); }
 }
 
 /* ============================================================
@@ -3837,6 +3851,7 @@ document.addEventListener("click",e=>{
     case "manual-fiscal": abrirManualFiscal(); break;
     case "saas-reload": state.saasTenants=undefined; state.saasLoading=false; render(); break;
     case "saas-salvar": salvarSaaSModulos(id); break;
+    case "saas-excluir": { const t=(state.saasTenants||[]).find(x=>x.id===id); excluirSaaSTenant(id, t?t.nome:""); break; }
     case "qr-print": qrImprimirTodos(); break;
     case "qr-um": qrUmaMesa(); break;
     case "qr-copy": { const lk=a.getAttribute("data-link")||""; try{ navigator.clipboard.writeText(lk); toast("Link copiado.","ok"); }catch(_){ const i=$("#qr-link-geral"); if(i){ i.select(); try{document.execCommand("copy");toast("Link copiado.","ok");}catch(e){} } } break; }
