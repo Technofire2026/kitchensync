@@ -1191,7 +1191,7 @@ function checkNovosAvisos(){
   const cur=avisosNaoLidos().length;
   if(state.avisoUser!==state.user.id){ state.avisoUser=state.user.id; state.avisoBaseline=cur; return; }
   if(state.avisoBaseline==null){ state.avisoBaseline=cur; return; }
-  if(cur>state.avisoBaseline){ tocarAviso(); toast("🔔 Novo aviso: uma cotação chegou para você.","ok"); }
+  if(cur>state.avisoBaseline){ tocarAviso(); const nn=avisosNaoLidos().slice().sort((a,b)=>(b.ts||0)-(a.ts||0))[0]; toast("🔔 "+((nn&&nn.texto)||"Novo aviso para você."),"ok"); }
   state.avisoBaseline=cur;
 }
 function tocarAviso(){
@@ -2855,6 +2855,7 @@ function fecharComanda(id, pagamentos){
   const cxA=caixaAberto();
   const nv={id:uid(),data:todayISO(),ts:Date.now(),pagamento:formas,canal:"Salão",pessoas:num(c.pessoas),mesa:c.mesa,permanenciaMin:permMin,comandaId:c.id,itens:itensN,baixas,servico:comandaServicoVal(c),pagamentos:pagamentos||[],caixaId:cxA?cxA.id:null};
   db.vendas.push(nv);
+  notificar(`🪑 Mesa ${c.mesa||"?"} fechou a conta — ${BRL(vendaTotal(nv))} (${formas}). Levar a maquininha.`, ["gerencia"], null, "pagamento");
   state.comandaId=null; save(); toast("Mesa fechada — venda de salão registrada.","ok"); render();
   autoEmitirNFCe(nv);
 }
@@ -2865,14 +2866,36 @@ function vendaDinheiro(v){
   if(Array.isArray(v.pagamentos)&&v.pagamentos.length) return v.pagamentos.filter(p=>/dinheiro/i.test(p.forma||"")).reduce((s,p)=>s+num(p.valor),0);
   return /dinheiro/i.test(v.pagamento||"")?vendaTotal(v):0;
 }
+function conciliacaoBadge(c){
+  if(!c||!c.conciliacao||!c.conciliacao.dif) return "";
+  const d=c.conciliacao.dif, keys=Object.keys(d); if(!keys.length) return "";
+  const bad=keys.some(k=>Math.abs(d[k])>=0.005);
+  const tit=keys.map(k=>k+": "+(d[k]>0?"+":"")+BRL(d[k])).join(" · ");
+  return ` <span class="pill ${bad?"red":"green"}" title="${esc(tit)}">💳 ${bad?"conferir":"ok"}</span>`;
+}
+/* Quebra o valor de uma venda por forma de pagamento (usa split se houver, senão a forma única). */
+function vendaPorForma(v){
+  const o={dinheiro:0,pix:0,credito:0,debito:0,outro:0};
+  const classif=(forma,val)=>{ const f=(forma||"").toLowerCase();
+    if(/dinheiro/.test(f)) o.dinheiro+=val;
+    else if(/pix/.test(f)) o.pix+=val;
+    else if(/cr[eé]dito/.test(f)) o.credito+=val;
+    else if(/d[eé]bito/.test(f)) o.debito+=val;
+    else o.outro+=val; };
+  if(Array.isArray(v.pagamentos)&&v.pagamentos.length) v.pagamentos.forEach(p=>classif(p.forma,num(p.valor)));
+  else classif(v.pagamento, vendaTotal(v));
+  return o;
+}
 function caixaResumo(cx){
   const vendas=(db.vendas||[]).filter(v=>v.caixaId===cx.id);
   const dinheiro=vendas.reduce((s,v)=>s+vendaDinheiro(v),0);
   const receita=vendas.reduce((s,v)=>s+vendaTotal(v),0);
+  const formas={dinheiro:0,pix:0,credito:0,debito:0,outro:0};
+  vendas.forEach(v=>{ const o=vendaPorForma(v); formas.dinheiro+=o.dinheiro; formas.pix+=o.pix; formas.credito+=o.credito; formas.debito+=o.debito; formas.outro+=o.outro; });
   const supr=(cx.movimentos||[]).filter(m=>m.tipo==="suprimento").reduce((s,m)=>s+num(m.valor),0);
   const sang=(cx.movimentos||[]).filter(m=>m.tipo==="sangria").reduce((s,m)=>s+num(m.valor),0);
   const esperado=num(cx.fundoInicial)+dinheiro+supr-sang;
-  return {vendas,nped:vendas.length,dinheiro,receita,outras:receita-dinheiro,supr,sang,esperado};
+  return {vendas,nped:vendas.length,dinheiro,receita,outras:receita-dinheiro,supr,sang,esperado,formas};
 }
 function vCaixa(){
   const cx=caixaAberto();
@@ -2892,7 +2915,7 @@ function vCaixa(){
     ${hist.length?`<div class="card" style="margin-top:16px"><div class="card-head"><h3>Fechamentos recentes</h3></div><div class="tbl-wrap"><table class="tbl">
       <thead><tr><th>Abertura</th><th>Fechamento</th><th>Operador</th>${fin?`<th class="r">Esperado</th>`:""}<th class="r">Contado</th><th class="r">Diferença</th></tr></thead>
       <tbody>${hist.map(c=>{const r=caixaResumo(c);const dif=num(c.contado)-r.esperado;const cls=Math.abs(dif)<0.005?"":(dif<0?"pill red":"pill green");return `<tr>
-        <td>${fmtDT(c.aberturaEm)}</td><td>${fmtDT(c.fechamentoEm)}</td><td>${esc(c.operadorNome||"—")}</td>
+        <td>${fmtDT(c.aberturaEm)}</td><td>${fmtDT(c.fechamentoEm)}</td><td>${esc(c.operadorNome||"—")}${conciliacaoBadge(c)}</td>
         ${fin?`<td class="r">${BRL(r.esperado)}</td>`:""}<td class="r">${BRL(c.contado)}</td>
         <td class="r">${cls?`<span class="${cls}">${dif>0?"+":""}${BRL(dif)}</span>`:BRL(0)}</td></tr>`;}).join("")}</tbody>
     </table></div></div>`:""}`;
@@ -2955,11 +2978,40 @@ function fecharCaixa(id){
     </div>
     <div class="field"><label>Dinheiro contado na gaveta *</label><input class="input" id="cx-contado" type="number" step="0.01" min="0" value="" inputmode="decimal" placeholder="0,00"></div>
     <div id="cx-dif" class="fld-st"></div>
-    <div class="field"><label>Observações</label><input class="input" id="cx-obs" placeholder="opcional"></div>`,
+    <div style="border-top:1px solid var(--line);margin:14px 0 8px;padding-top:10px"><b style="font-size:13.5px">Conciliação de cartões / maquininha</b>
+      <div class="muted" style="font-size:12px;margin-top:2px">Lance os totais do relatório da maquininha e do extrato do Pix para conferir com o que o garçom registrou. Deixe em branco o que não quiser conferir. Gorjeta lançada na maquininha pode gerar diferença.</div></div>
+    <div class="conc-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 10px;align-items:end">
+      <div class="muted" style="font-size:11.5px">Forma</div><div class="muted" style="font-size:11.5px">Registrado (app)</div><div class="muted" style="font-size:11.5px">Maquininha / extrato</div>
+      <div class="strong" style="font-size:13px">Crédito</div>
+      <div class="r" style="font-size:13px">${BRL(r.formas.credito)}</div>
+      <div><input class="input" id="cx-maq-cred" type="number" step="0.01" min="0" inputmode="decimal" placeholder="informado"></div>
+      <div></div><div></div><div id="cx-dif-cred" class="fld-st" style="margin-top:-2px"></div>
+      <div class="strong" style="font-size:13px">Débito</div>
+      <div class="r" style="font-size:13px">${BRL(r.formas.debito)}</div>
+      <div><input class="input" id="cx-maq-deb" type="number" step="0.01" min="0" inputmode="decimal" placeholder="informado"></div>
+      <div></div><div></div><div id="cx-dif-deb" class="fld-st" style="margin-top:-2px"></div>
+      <div class="strong" style="font-size:13px">Pix</div>
+      <div class="r" style="font-size:13px">${BRL(r.formas.pix)}</div>
+      <div><input class="input" id="cx-maq-pix" type="number" step="0.01" min="0" inputmode="decimal" placeholder="informado"></div>
+      <div></div><div></div><div id="cx-dif-pix" class="fld-st" style="margin-top:-2px"></div>
+    </div>
+    ${r.formas.outro>0.005?`<div class="muted" style="font-size:12px;margin-top:6px">Outras formas registradas: <b>${BRL(r.formas.outro)}</b>.</div>`:""}
+    <div class="field" style="margin-top:12px"><label>Observações</label><input class="input" id="cx-obs" placeholder="opcional"></div>`,
     ()=>{ const contado=num($("#cx-contado").value);
       if($("#cx-contado").value===""){ toast("Informe o dinheiro contado.","err"); return false; }
       cx.status="fechado"; cx.fechamentoEm=Date.now(); cx.contado=contado; cx.diferenca=contado-r.esperado;
       cx.obs=$("#cx-obs").value.trim(); cx.fechadoPorId=state.user.id; cx.fechadoPorNome=state.user.nome;
+      const maq={}, _mc=$("#cx-maq-cred"),_md=$("#cx-maq-deb"),_mp=$("#cx-maq-pix");
+      if(_mc&&_mc.value!=="") maq.credito=num(_mc.value);
+      if(_md&&_md.value!=="") maq.debito=num(_md.value);
+      if(_mp&&_mp.value!=="") maq.pix=num(_mp.value);
+      if(Object.keys(maq).length){
+        const dif={};
+        if(maq.credito!=null) dif.credito=maq.credito-r.formas.credito;
+        if(maq.debito!=null) dif.debito=maq.debito-r.formas.debito;
+        if(maq.pix!=null) dif.pix=maq.pix-r.formas.pix;
+        cx.conciliacao={ registrado:{credito:r.formas.credito,debito:r.formas.debito,pix:r.formas.pix}, maquininha:maq, dif };
+      }
       save();
       const dif=cx.diferenca;
       toast(Math.abs(dif)<0.005?"Caixa fechado — conferido, sem diferença.":(dif<0?`Caixa fechado — FALTA ${BRL(-dif)}.`:`Caixa fechado — SOBRA ${BRL(dif)}.`), Math.abs(dif)<0.005?"ok":"err");
@@ -2969,6 +3021,16 @@ function fecharCaixa(id){
       out.textContent=Math.abs(d)<0.005?"Conferido — sem diferença.":(d<0?`Falta ${BRL(-d)} em relação ao esperado.`:`Sobra ${BRL(d)} em relação ao esperado.`);
       out.className="fld-st "+(Math.abs(d)<0.005?"ok":"err"); };
     inp.addEventListener("input",upd); },40);
+  setTimeout(()=>{
+    const linha=(inpId,outId,reg)=>{ const i=$(inpId),o=$(outId); if(!i||!o) return;
+      const u=()=>{ if(i.value===""){ o.textContent=""; o.className="fld-st"; return; } const d=num(i.value)-reg;
+        o.textContent=Math.abs(d)<0.005?"Confere ✓":(d<0?`Falta ${BRL(-d)} vs. registrado`:`Sobra ${BRL(d)} vs. registrado`);
+        o.className="fld-st "+(Math.abs(d)<0.005?"ok":"err"); };
+      i.addEventListener("input",u); };
+    linha("#cx-maq-cred","#cx-dif-cred",r.formas.credito);
+    linha("#cx-maq-deb","#cx-dif-deb",r.formas.debito);
+    linha("#cx-maq-pix","#cx-dif-pix",r.formas.pix);
+  },40);
 }
 
 /* ===== Delivery próprio — pedidos de entrega ===== */
