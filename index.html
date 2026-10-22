@@ -1652,7 +1652,7 @@ function importInsumos(){
   state.impInsumos=null;
   openModal("Importar insumos (CSV)",`
     <div class="muted" style="font-size:13px;margin-bottom:10px">Importe vários insumos de uma vez a partir de uma planilha. No Excel ou Google Sheets, use <b>Salvar como CSV</b>. Colunas: <code>nome;categoria;unidade;setor;marca;estoque;minimo;custo;validade</code>. Só <b>nome</b> e <b>unidade</b> são obrigatórios; o <b>setor</b> pode ser cozinha, bar, limpeza ou descartaveis. Itens com o mesmo nome e setor são atualizados.</div>
-    <button class="btn sm" data-act="modelo-insumos">⤓ Baixar modelo CSV</button>
+    <div class="hstack" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="modelo-insumos">⤓ Baixar modelo CSV</button><a class="btn sm ghost" href="manual-importar-insumos.html" target="_blank" rel="noopener">📖 Como preparar a planilha</a></div>
     <div class="field" style="margin-top:12px"><label>Arquivo CSV</label><input class="input" id="imp-file" type="file" accept=".csv,text/csv,text/plain"></div>
     <div id="imp-res" style="font-size:13px;margin-top:4px"></div>`,
     ()=>{ const rows=state.impInsumos||[]; if(!rows.length){ toast("Selecione um arquivo CSV válido primeiro.","err"); return false; }
@@ -2536,6 +2536,12 @@ function abrirManualFiscal(){
   openModal("Manual de configuração fiscal (NFC-e)",`
     <div class="muted" style="font-size:12.5px;margin-bottom:8px">Passo a passo para deixar a emissão do cupom fiscal funcionando. <a href="manual-fiscal.html" target="_blank" style="color:var(--brand);font-weight:600">↗ abrir em nova aba</a></div>
     <iframe src="manual-fiscal.html" title="Manual Fiscal" loading="lazy" style="width:100%;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:12px;display:block;background:#fff"></iframe>`,
+    null,"wide",true);
+}
+function abrirManualInsumos(){
+  openModal("Como importar insumos por planilha (CSV)",`
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">Guia rápido para montar a planilha e importar seus insumos de uma vez. <a href="manual-importar-insumos.html" target="_blank" style="color:var(--brand);font-weight:600">↗ abrir em nova aba</a></div>
+    <iframe src="manual-importar-insumos.html" title="Manual Importar Insumos" loading="lazy" style="width:100%;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:12px;display:block;background:#fff"></iframe>`,
     null,"wide",true);
 }
 function abrirManualRecebimento(){
@@ -3870,6 +3876,7 @@ function vConfig(){
     <div class="card"><div class="card-head"><h3>📖 Manuais &amp; treinamento</h3></div><div class="card-body">
       <div class="muted" style="font-size:13px;margin-bottom:10px">Guias de operação para a sua equipe.</div>
       <button class="btn" data-act="manual-recebimento">🧾 Recebimento, fechamento de conta e conciliação</button>
+      <button class="btn" data-act="manual-insumos" style="margin-top:8px">📦 Importar insumos por planilha (CSV)</button>
     </div></div>
     <div class="card"><div class="card-head"><h3>Alertas &amp; limites</h3></div><div class="card-body">
       <div class="field"><label>Aviso de validade — dias de antecedência</label><input class="input" id="cf-validade" type="number" step="1" min="0" value="${c.validadeAlerta!=null?c.validadeAlerta:7}"></div>
@@ -4111,6 +4118,7 @@ document.addEventListener("click",e=>{
     case "nfce-ver": { const v=byId(db.vendas,id); if(v&&v.nfce&&v.nfce.url_danfce) window.open(v.nfce.url_danfce,"_blank"); break; }
     case "manual-fiscal": abrirManualFiscal(); break;
     case "manual-recebimento": abrirManualRecebimento(); break;
+    case "manual-insumos": abrirManualInsumos(); break;
     case "saas-reload": state.saasTenants=undefined; state.saasLoading=false; render(); break;
     case "saas-salvar": salvarSaaSModulos(id); break;
     case "saas-renomear": { const t=(state.saasTenants||[]).find(x=>x.id===id); renomearSaaSTenant(id, t?t.nome:""); break; }
