@@ -427,11 +427,12 @@ const initials = n => (n||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join(
 function download(name,text){ try{const b=new Blob([text],{type:"text/csv;charset=utf-8"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}catch(e){toast("Não foi possível exportar aqui.","err");} }
 
 /* ---------- Roles / permissions ---------- */
-const ROLES = { admin:"Administrador", gerencia:"Gerência", operacao:"Resp. da Operação", estoque:"Estoque / Almoxarifado", compras:"Compras", financeiro:"Financeiro" };
+const ROLES = { admin:"Administrador", gerencia:"Gerência", operacao:"Resp. da Operação", garcom:"Garçom", estoque:"Estoque / Almoxarifado", compras:"Compras", financeiro:"Financeiro" };
 const ROLES_DESC = {
   admin:"Acesso total ao sistema e às configurações.",
   gerencia:"Valida necessidades, aprova compras, avalia exceções e acompanha custos e indicadores.",
   operacao:"Confere estoque, identifica necessidade, registra perdas, emite requisição e acompanha consumo.",
+  garcom:"Atende as mesas: abre comandas, lança pedidos e acompanha a cozinha. Sem acesso a caixa, financeiro ou configurações.",
   estoque:"Controla entradas/saídas, recebe, confere quantidade/lote/validade, armazena e registra transferências.",
   compras:"Consolida solicitações, cota, negocia, faz o mapa comparativo, emite pedido e mantém fornecedores.",
   financeiro:"Confere documentação, programa pagamentos e valida condições — sem recebimento, sem pagamento."
@@ -452,8 +453,8 @@ const NAV = [
  {id:"vendas",     g:"Operação", label:"Vendas",              ic:"🧾", roles:["admin","gerencia","operacao"]},
  {id:"produtos",   g:"Operação", label:"Produtos & Cardápio", ic:"🍽️", roles:["admin","gerencia","operacao"]},
  {id:"producao",   g:"Operação", label:"Produção",            ic:"🍳", roles:["admin","gerencia","operacao","estoque"]},
- {id:"comandas",   g:"Operação", label:"Mesas / Comandas",    ic:"🪑", roles:["admin","gerencia","operacao"]},
- {id:"kds",        g:"Operação", label:"Cozinha — Pedidos",   ic:"🧑‍🍳", roles:["admin","gerencia","operacao","estoque"]},
+ {id:"comandas",   g:"Operação", label:"Mesas / Comandas",    ic:"🪑", roles:["admin","gerencia","operacao","garcom"]},
+ {id:"kds",        g:"Operação", label:"Cozinha — Pedidos",   ic:"🧑‍🍳", roles:["admin","gerencia","operacao","estoque","garcom"]},
  {id:"caixa",      g:"Operação", label:"Caixa (PDV)",         ic:"💰", roles:["admin","gerencia","operacao","financeiro"]},
  {id:"delivery",   g:"Operação", label:"Delivery",            ic:"🛵", roles:["admin","gerencia","operacao"]},
  {id:"cardapio-qr",g:"Operação", label:"Cardápio QR",         ic:"🔳", roles:["admin","gerencia"]},
@@ -494,6 +495,8 @@ function isSuperAdmin(){ try{ return !!(typeof SB!=="undefined" && SB.on && SB.e
 const can = view => { if(view==="superadmin") return isSuperAdmin(); const n=NAV.find(x=>x.id===view); return !!(n && state.user && n.roles.includes(state.user.nivel) && moduloAtivo(navModulo(view))); };
 /* Quem pode ver faturamento, lucro e custos (financeiro). Demais funções operam sem ver valores de venda/lucro. */
 const verFin = () => !!(state.user && ["admin","gerencia","financeiro"].includes(state.user.nivel));
+/* Tela inicial ao logar: Painel se a função puder vê-lo; senão a 1ª tela permitida (ex.: garçom cai em Mesas/Comandas). */
+function viewInicial(){ if(can("dashboard")) return "dashboard"; const n=NAV.find(x=>can(x.id)); return n?n.id:"dashboard"; }
 
 /* ---------- Persistence ---------- */
 let db = null;
@@ -927,10 +930,10 @@ function topbar(){
 }
 /* Barra de atalhos inferior (celular): Painel + 3 principais da função + Mais */
 function tabbar(){
-  const prio=["vendas","comandas","producao","insumos","movimentacao","compras","cotacoes","dre","kpis","despesas","funcionarios"];
+  const prio=["vendas","comandas","kds","producao","insumos","movimentacao","compras","cotacoes","dre","kpis","despesas","funcionarios"];
   const extras=prio.filter(id=>can(id)).slice(0,3);
-  const ids=["dashboard",...extras];
-  const short={dashboard:"Painel",vendas:"Vendas",comandas:"Mesas",producao:"Produção",insumos:"Estoque",movimentacao:"Cozinha",compras:"Compras",cotacoes:"Cotações",dre:"DRE",kpis:"KPIs",despesas:"Despesas",funcionarios:"Equipe"};
+  const ids=[...(can("dashboard")?["dashboard"]:[]),...extras];
+  const short={dashboard:"Painel",vendas:"Vendas",comandas:"Mesas",kds:"Pedidos",producao:"Produção",insumos:"Estoque",movimentacao:"Cozinha",compras:"Compras",cotacoes:"Cotações",dre:"DRE",kpis:"KPIs",despesas:"Despesas",funcionarios:"Equipe"};
   const cell=id=>{ const n=NAV.find(x=>x.id===id); if(!n) return ""; const on=state.view===id; return `<a class="tab ${on?"on":""}" data-view="${id}"><span class="ti">${n.ic}</span><span class="tl">${esc(short[id]||n.label)}</span></a>`; };
   const maisOn=!ids.includes(state.view);
   return `
@@ -1010,7 +1013,7 @@ function doLogin(){
   const senha=$("#lg-senha").value;
   const u=db.usuarios.find(x=>x.login.toLowerCase()===login && x.senha===senha && x.ativo);
   if(!u){ renderLogin("Login ou senha inválidos, ou usuário inativo."); return; }
-  state.user=u; state.view="dashboard"; render();
+  state.user=u; state.view=viewInicial(); render();
 }
 
 /* ============================================================
@@ -1600,7 +1603,7 @@ function vInsumos(){
   const list=db.insumos.filter(i=>!q||i.nome.toLowerCase().includes(q)||(i.categoria||"").toLowerCase().includes(q)||(i.marca||"").toLowerCase().includes(q));
   const valor=list.reduce((s,i)=>s+num(i.estoque)*num(i.custoMedio),0);
   return `
-  ${toolbar("Buscar insumo…", can("insumos")?`<span class="pill">Valor em estoque: <b>${BRL(valor)}</b></span> <button class="btn ghost" data-act="export-estoque">⤓ CSV estoque</button> <button class="btn primary" data-act="add-insumo">＋ Novo insumo</button>`:"")}
+  ${toolbar("Buscar insumo…", can("insumos")?`<span class="pill">Valor em estoque: <b>${BRL(valor)}</b></span> <button class="btn ghost" data-act="export-estoque">⤓ CSV estoque</button> <button class="btn ghost" data-act="import-insumos">⤒ Importar CSV</button> <button class="btn primary" data-act="add-insumo">＋ Novo insumo</button>`:"")}
   <div class="card"><div class="card-body flush"><div class="tbl-wrap">
     <table class="tbl"><thead><tr><th>Insumo</th><th>Categoria</th><th>Un</th><th class="r">Estoque</th><th class="r">Mínimo</th><th class="r">Custo médio</th><th class="r">Valor</th><th></th></tr></thead>
     <tbody>${list.length?list.map(i=>{const baixo=num(i.estoque)<=num(i.minimo);return `
@@ -1614,6 +1617,61 @@ function vInsumos(){
       :`<tr><td colspan="8">${emptyBox("📦","Nenhum insumo","Cadastre farinha, queijo, embalagens etc.")}</td></tr>`}
     </tbody></table>
   </div></div></div>`;
+}
+function baixarModeloInsumosCSV(){
+  const linhas=[
+    "nome;categoria;unidade;setor;marca;estoque;minimo;custo;validade",
+    "Mussarela;Frios;kg;cozinha;Tirolez;10;3;39,90;",
+    "Refrigerante Lata;Bebidas;un;bar;;48;12;2,50;2026-12-31",
+    "Guardanapo;Descartáveis;un;descartaveis;;500;100;0,05;"
+  ];
+  download("modelo-insumos-kitchensync.csv","﻿"+linhas.join("\r\n"));
+  toast("Modelo CSV baixado.","ok");
+}
+function parseCSVInsumos(text){
+  text=String(text||"").replace(/^﻿/,"");
+  const linhas=text.split(/\r?\n/).filter(l=>l.trim()!=="");
+  if(!linhas.length) return {rows:[],err:"Arquivo vazio."};
+  const head=linhas[0];
+  const sep=(head.split(";").length>=head.split(",").length)?";":",";
+  const parseLinha=l=>{ const out=[]; let cur="",q=false; for(let i=0;i<l.length;i++){const ch=l[i]; if(q){ if(ch=='"'){ if(l[i+1]=='"'){cur+='"';i++;} else q=false; } else cur+=ch; } else { if(ch=='"') q=true; else if(ch===sep){out.push(cur);cur="";} else cur+=ch; } } out.push(cur); return out.map(s=>s.trim()); };
+  const norm=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
+  const cols=parseLinha(head).map(norm);
+  const idx=(...names)=>{ for(const n of names){ const i=cols.indexOf(n); if(i>=0) return i; } return -1; };
+  const ci={nome:idx("nome","insumo","item","produto"),cat:idx("categoria","cat"),un:idx("unidade","un","und"),setor:idx("setor","estoque","local"),marca:idx("marca"),est:idx("estoque atual","estoque","qtd","quantidade","saldo"),min:idx("minimo","estoque minimo","min"),custo:idx("custo","custo medio","preco","valor","custo (r$)"),val:idx("validade","vencimento","venc")};
+  if(ci.nome<0) return {rows:[],err:'Não encontrei a coluna "nome". Baixe o modelo e use o mesmo cabeçalho.'};
+  const brNum=v=>{ let s=String(v==null?"":v).trim(); if(s==="") return 0; s=s.replace(/\s|R\$|r\$/g,""); if(s.indexOf(",")>=0){ s=s.replace(/\./g,"").replace(",","."); } const n=parseFloat(s); return isFinite(n)?n:0; };
+  const setorKey=v=>{ const n=norm(v); if(!n) return "cozinha"; if(SETORES[n]) return n; const m={cocina:"cozinha",embalagens:"descartaveis",embalagem:"descartaveis",descartavel:"descartaveis",materiais:"limpeza"}; if(m[n]) return m[n]; for(const k in SETORES){ if(norm(SETORES[k].label).indexOf(n)>=0||n.indexOf(k)>=0) return k; } return "cozinha"; };
+  const rows=[];
+  for(let i=1;i<linhas.length;i++){ const c=parseLinha(linhas[i]); const nome=(c[ci.nome]||"").trim(); if(!nome) continue;
+    rows.push({ nome, categoria:ci.cat>=0?(c[ci.cat]||"").trim():"", unidade:(ci.un>=0?(c[ci.un]||"").trim():"")||"un", setor:setorKey(ci.setor>=0?c[ci.setor]:""), marca:ci.marca>=0?(c[ci.marca]||"").trim():"", estoque:ci.est>=0?brNum(c[ci.est]):0, minimo:ci.min>=0?brNum(c[ci.min]):0, custoMedio:ci.custo>=0?brNum(c[ci.custo]):0, validade:ci.val>=0?(c[ci.val]||"").trim():"" });
+  }
+  return {rows,err:null};
+}
+function importInsumos(){
+  state.impInsumos=null;
+  openModal("Importar insumos (CSV)",`
+    <div class="muted" style="font-size:13px;margin-bottom:10px">Importe vários insumos de uma vez a partir de uma planilha. No Excel ou Google Sheets, use <b>Salvar como CSV</b>. Colunas: <code>nome;categoria;unidade;setor;marca;estoque;minimo;custo;validade</code>. Só <b>nome</b> e <b>unidade</b> são obrigatórios; o <b>setor</b> pode ser cozinha, bar, limpeza ou descartaveis. Itens com o mesmo nome e setor são atualizados.</div>
+    <button class="btn sm" data-act="modelo-insumos">⤓ Baixar modelo CSV</button>
+    <div class="field" style="margin-top:12px"><label>Arquivo CSV</label><input class="input" id="imp-file" type="file" accept=".csv,text/csv,text/plain"></div>
+    <div id="imp-res" style="font-size:13px;margin-top:4px"></div>`,
+    ()=>{ const rows=state.impInsumos||[]; if(!rows.length){ toast("Selecione um arquivo CSV válido primeiro.","err"); return false; }
+      let novos=0,atu=0;
+      rows.forEach(r=>{ const ex=db.insumos.find(x=>x.nome.toLowerCase()===r.nome.toLowerCase() && setorDe(x)===r.setor);
+        if(ex){ Object.assign(ex,{marca:r.marca||ex.marca,categoria:r.categoria||ex.categoria,unidade:r.unidade||ex.unidade,setor:r.setor,minimo:r.minimo,custoMedio:r.custoMedio,estoque:r.estoque,validade:r.validade||ex.validade}); atu++; }
+        else { db.insumos.push({id:uid(),nome:r.nome,marca:r.marca,categoria:r.categoria,unidade:r.unidade||"un",setor:r.setor,estoque:r.estoque,minimo:r.minimo,custoMedio:r.custoMedio,validade:r.validade,lotes:[]}); novos++; } });
+      state.impInsumos=null; save(); toast(`Importação concluída: ${novos} novo(s), ${atu} atualizado(s).`,"ok"); return true; });
+  setTimeout(()=>{ const b=$("#modal .btn.primary"); if(b) b.textContent="Importar";
+    const f=$("#imp-file"), res=$("#imp-res"); if(!f) return;
+    f.addEventListener("change",()=>{ const file=f.files&&f.files[0]; if(!file){ state.impInsumos=null; res.textContent=""; return; }
+      const rd=new FileReader();
+      rd.onload=()=>{ const out=parseCSVInsumos(rd.result); if(out.err){ state.impInsumos=null; res.innerHTML='<span style="color:var(--danger)">'+esc(out.err)+'</span>'; return; }
+        const rows=out.rows; if(!rows.length){ state.impInsumos=null; res.innerHTML='<span style="color:var(--danger)">Nenhuma linha de insumo encontrada.</span>'; return; }
+        state.impInsumos=rows; let nv=0,at=0; rows.forEach(r=>{ const ex=db.insumos.find(x=>x.nome.toLowerCase()===r.nome.toLowerCase()&&setorDe(x)===r.setor); ex?at++:nv++; });
+        res.innerHTML='<b>'+rows.length+'</b> insumo(s) lido(s): <b style="color:var(--basil)">'+nv+' novo(s)</b>, <b>'+at+' atualização(ões)</b>. Toque em <b>Importar</b> para confirmar.'; };
+      rd.onerror=()=>{ state.impInsumos=null; res.innerHTML='<span style="color:var(--danger)">Não consegui ler o arquivo.</span>'; };
+      rd.readAsText(file,"utf-8"); });
+  },40);
 }
 function formInsumo(i){
   i=i||{};
@@ -3955,6 +4013,8 @@ document.addEventListener("click",e=>{
 
     /* insumos */
     case "add-insumo": formInsumo(); break;
+    case "import-insumos": if(can("insumos")) importInsumos(); break;
+    case "modelo-insumos": baixarModeloInsumosCSV(); break;
     case "edit-insumo": formInsumo(byId(db.insumos,id)); break;
     case "del-insumo": confirmDel("Excluir este insumo?",()=>{db.insumos=db.insumos.filter(x=>x.id!==id);}); break;
 
@@ -4410,7 +4470,7 @@ async function sbEnter(session){
   state.user=u;
   if(u.ativo===false){ renderNoAccess(); return; }
   if(u.nivel==="admin"){ const nv=processarVencidos(); if(nv>0) setTimeout(()=>toast(nv+" item(ns) vencido(s) tiveram baixa automática (perda: Vencido).","err"),800); }
-  state.view="dashboard"; render();
+  state.view=viewInicial(); render();
 }
 function renderAuth(err){
   const signup = state.authMode==="signup";
@@ -4536,7 +4596,7 @@ async function cloudEnter(){
     state.user=u;
   }
   if(state.user && state.user.ativo===false){ renderNoAccess(); return; }
-  state.view="dashboard"; render();
+  state.view=viewInicial(); render();
 }
 function renderNoAccess(){
   $("#root").innerHTML = `<div class="login-wrap"><div class="login-hero"><div class="brandmark"><img class="loginlogo" src="${LOGO_FULL}" alt="Kitchen Sync"></div>
