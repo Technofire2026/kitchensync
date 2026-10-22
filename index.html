@@ -839,6 +839,7 @@ function render(){
   applyThemeAttr();
   if(!state.user){ renderLogin(); return; }
   if(!can(state.view)) state.view = viewInicial();
+  const _navEl=document.querySelector(".sidebar .nav"); const _navTop=_navEl?_navEl.scrollTop:0;
   const root=$("#root");
   root.innerHTML = `
     <div class="app">
@@ -851,6 +852,7 @@ function render(){
       ${tabbar()}
     </div>`;
   $("#content").innerHTML = viewHTML();
+  const _navEl2=document.querySelector(".sidebar .nav"); if(_navEl2) _navEl2.scrollTop=_navTop;
   afterRender();
 }
 function applyThemeAttr(){}
