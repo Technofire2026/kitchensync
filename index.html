@@ -838,7 +838,7 @@ function diasSemContagem(mode){
 function render(){
   applyThemeAttr();
   if(!state.user){ renderLogin(); return; }
-  if(!can(state.view)) state.view = "dashboard";
+  if(!can(state.view)) state.view = viewInicial();
   const root=$("#root");
   root.innerHTML = `
     <div class="app">
@@ -3989,7 +3989,7 @@ function preencherSugestoesBusca(){
 
 document.addEventListener("click",e=>{
   const nav=e.target.closest("[data-view]");
-  if(nav){ state.view=nav.getAttribute("data-view"); state.search=""; state.sidebarOpen=false; render(); return; }
+  if(nav){ state.view=nav.getAttribute("data-view"); state.search=""; state.sidebarOpen=false; render(); try{window.scrollTo(0,0);}catch(_){} const _ct=$("#content"); if(_ct) _ct.scrollTop=0; return; }
   const seg=e.target.closest("[data-seg] button");
   if(seg){ const key=seg.parentElement.getAttribute("data-seg"); state.period[key]=seg.getAttribute("data-p"); render(); return; }
   const a=e.target.closest("[data-act]"); if(!a) return;
